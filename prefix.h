@@ -4,6 +4,14 @@
 #include "pcap.h"
 #include "monitor.h"
 
+#define BIN_NUM 10
+#define BIN_TIME 0.08
+
+typedef struct prefix{
+	int ip;
+	int slash;
+}prefix;
+
 typedef struct prefix_set{
 	int *statistic;
 	int *ip_set;

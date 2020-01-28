@@ -19,6 +19,119 @@ typedef struct trie_node{
 	void * children[DICTIONARY_SIZE];
 }trie_node;
 
+typedef struct as_rel{
+	int a[150000];
+	int b[150000];
+	short rel[150000];
+	int count;
+}as_rel;
+
+
+int binarysearch(int *arr, int target, int count){
+	int hi,lo,mid;
+	for (lo = 0, hi = count - 1;lo <= hi;){
+		mid = (lo + hi) / 2;
+		if (arr[mid] < target)
+			lo = mid + 1;
+		else if (arr[mid] > target)
+			hi = mid - 1;
+		else
+			return mid;
+	}
+	return -1;
+}
+
+as_rel *load_asr(){
+	char buff[1000];
+	char filename[256];
+	FILE *fd;
+
+	memset(buff,0,1000);
+	memset(filename,0,256);
+	printf("Plz input the filename of as relationship: ");
+	scanf("%s",filename);
+	fd = fopen(filename,"r");
+
+	as_rel *asr = (as_rel *)malloc(sizeof(as_rel));
+	int i = 0;
+	while(!feof(fd)){
+		fgets(buff, 1000, fd);
+		if (buff[0]<'0'||buff[0]>'9') {
+			continue;//invalid line
+		}
+		int j,tmp,p;
+		for (j = 0,tmp = 0,p = 0;j < strlen(buff);++j){
+			if (p == 2){
+				if (buff[j]=='-'){
+					asr->rel[i] = -1;
+				}
+				else if (buff[j]=='0'){
+					asr->rel[i] = 0;
+				}
+				else if (buff[j]=='1'){
+					asr->rel[i] = 1;
+				}
+				break;
+			}
+			if (buff[j]=='|'){
+				if (p==0) {
+					asr->a[i]=tmp;
+					tmp = 0;
+				}
+				else if (p==1) {
+					asr->b[i]=tmp;
+					tmp = 0;
+				}
+				p += 1;
+			}
+			tmp = tmp * 10 + (buff[j]-'0');
+		}
+		i += 1;
+	}
+	asr->count = i;
+
+	fclose(fd);
+	printf("Finish loading AS relation list!\n");
+	// printf("The first line is %d|%d|%hd\n", asr->a[0], asr->b[0], asr->rel[0]);
+
+	return asr;
+}
+
+int path_cmp(as_path path1, as_path path2, int local_as, int mode, as_rel *asr){
+	if (path1.nodes == NULL) return 1;
+	if (path2.nodes == NULL) return -1;
+	if (mode == 0){
+		short rel1 = 1, rel2 = 1;
+		int left, right, tmp, i;
+		tmp = asr->rel[binarysearch(asr->a, local_as, asr->count)];
+		if (tmp == 0) return 0;
+		for(left=tmp;asr->a[left]!=local_as;left--){}
+		left += 1;
+		for (right=tmp;asr->a[right]!=local_as;right++){}
+		right -= 1;
+		for (i = left;i <= right;++i){
+			if (asr->b[i]==path1.nodes[0]) 
+				rel1 = asr->rel[i];
+			if (asr->b[i]==path2.nodes[0])
+				rel2 = asr->rel[i];
+		}
+		if (rel1 < rel2) return -1;
+		else if (rel1 > rel2) return 1;
+		else return 0;
+	}
+	else if (mode == 1){
+		int len1,len2,i;
+		for (i=0,len1=0,len2=0;i < 15;++i){
+			if (path1.nodes[i]) len1++;
+			if (path2.nodes[i]) len2++;
+		}
+		if (len1 < len2) return -1;
+		else if (len1 > len2) return 1;
+		else return 0;
+	}
+	return 0;
+}
+
 trie_node *create_trie_node(){
 	trie_node *pNode = (trie_node *)malloc(sizeof(trie_node));
 	pNode->isKey = 0;
@@ -29,7 +142,7 @@ trie_node *create_trie_node(){
 	return pNode;
 }
 
-void trie_insert(trie_node *root, char* key, as_path *path){
+void trie_insert(trie_node *root, char* key, as_path *path, as_rel *asr){
 	if (path==NULL){
 		printf("Fail to insert prefix\n");
 		return;
@@ -43,7 +156,9 @@ void trie_insert(trie_node *root, char* key, as_path *path){
 		++p;
 	}
 	node->isKey = 1;
-	node->path.nodes = path->nodes;
+	if (path_cmp(node->path, *path, 12085, 1,asr) > 0){
+		node->path.nodes = path->nodes;
+	}
 }
 
 trie_node *trie_search(trie_node *root, char* key){
@@ -128,6 +243,9 @@ int isIPv4(char *prefix){
 }
 
 trie_node* load_rib(){
+	as_rel *asr;
+	asr = load_asr();
+
 	trie_node *root = create_trie_node();
 	char buff[1000];
 	char filename[256];
@@ -135,8 +253,10 @@ trie_node* load_rib(){
 
 	memset(buff,0,1000);
 	memset(filename,0,256);
+	printf("Plz input the filename of rib: ");
 	scanf("%s",filename);
 	fd = fopen(filename,"r");
+
 
 	if (!fd){
 		printf("Fail to load file\n");
@@ -150,10 +270,11 @@ trie_node* load_rib(){
 		memset(prefix,0,20);
 		as_path path;
 		path.nodes = (int *)malloc(sizeof(int)*15);
+		memset(path.nodes, 0, sizeof(int)*15);
 		int i,j,tmp;
 		for (i=0;buff[i]!='\t';++i){}
 		memcpy(prefix,buff,i);//now buff[i] = '\t'
-		if (!isIPv4(prefix)) break;
+		if (!isIPv4(prefix)) break;//TODO?: ipv6 expansion
 		i = i + 1;
 		for (tmp=0,j = 0;i<strlen(buff);++i){
 			if (buff[i] == ' ' || i == strlen(buff) - 1){
@@ -165,7 +286,7 @@ trie_node* load_rib(){
 				tmp = tmp * 10 + (buff[i]-'0');
 			}
 		}
-		trie_insert(root,prefix_01(prefix), &path);
+		trie_insert(root, prefix_01(prefix), &path, asr);
 		// printf("Insert %s\n", prefix);
 	}
 
@@ -192,6 +313,7 @@ int *flow2path(unsigned long dst_ip, trie_node *root){
 	}
 	return NULL;
 }
+
 
 int terminal_UI(){
 	trie_node *root;
@@ -221,8 +343,8 @@ int terminal_UI(){
 			if (p){
 				printf("Found! Path is");
 				int i;
-				for (i=0;i<sizeof(p->path.nodes);++i){
-					if (p->path.nodes[i])
+				for (i=0;i < 15;++i){
+					if (p->path.nodes[i] != 0)
 						printf(" %d",p->path.nodes[i]);
 					}
 				printf("\n");
