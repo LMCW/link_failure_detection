@@ -1,13 +1,30 @@
 #ifndef pcap_h
 #define pcap_h
 
-#include "monitor.h"
+#include <stdio.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <time.h>
 
 typedef unsigned int bpf_u_int32;
 typedef unsigned short u_short;
 typedef int bpf_int32;
 typedef unsigned char u_int8;
-
+/*
+500: 47s traffic    7s spent 27834 retransmission
+10000: 47s traffic  8s spent 41345 retransmission
+50000: 47s traffic  141s spent 306696 retransmission
+100000: 47s traffic 859s spent 9117599 retransmission
+*/
+#define MAX_ETH_FRAME 1514
+#define ERROR_FILE_OPEN_FAILED -1
+#define ERROR_MEM_ALLOC_FAILED -2
+#define ERROR_PCAP_PARSE_FAILED -3
+#define ETH_LENGTH 14
+#define MAX_QUEUE_LENGTH 100
+#define BIN_NUM 10
+#define BIN_TIME 0.08
 /*
 pcap file header 24B
 Magic:4B:0X1A 2B 3C 4D:the beginning of the file
@@ -83,6 +100,56 @@ typedef struct tcp_header{
 	u_short urgentpointer;	
 }tcp_header;
 
+typedef struct flow{
+	bpf_u_int32 src;
+	bpf_u_int32 dst;
+	bpf_u_int32 src_p;
+	bpf_u_int32 dst_p;
+	bpf_u_int32 expect_seq;
+	bpf_u_int32 curr_ack;
+	bpf_u_int32 last_size;
+}flow;
+
+typedef struct FlowQueue{
+	flow *queue;
+	int head;
+	int tail;
+	int count;
+	int size;
+}FlowQueue;
+
+typedef struct prefix{
+	unsigned long ip;
+	int slash;
+	int *sliding_window;
+	/*sliding window should be a ring containing BIN_NUM bins
+	  update window needs to figure out the shift number
+	  remove bins from curr_sw_pos to (curr_sw_pos + shift) % BIN_NUM
+	  curr_sw_pos = (curr_sw_pos + shift) % BIN_NUM; which is the new start of the sliding window
+	  we should always add the rt to the last bin, which is (curr_sw_pos - 1) % BIN_NUM
+	  current_bin_start_time += shift * BIN_TIME
+	*/
+	int curr_sw_pos;
+	timestamp current_bin_start_time;
+	FlowQueue *fq;
+}prefix;
+
+int queue_init(FlowQueue *Q, int size);
+int queue_free(FlowQueue *Q);
+int queue_empty(FlowQueue * Q);
+int queue_enqueue(FlowQueue *Q, flow *item);
+int queue_dequeue(FlowQueue *Q);
+
+int flow_match(bpf_u_int32 src, bpf_u_int32 dst, bpf_u_int32 src_p, bpf_u_int32 dst_p, flow f);
+
+prefix *pfx_set_from_file(int size);
+int ip_pfx_match(unsigned long ip, prefix pfx);
+int binary_search_ip(unsigned long ip, prefix *pfx_set, int set_size);
+void monitor();
+timestamp ts_minus(timestamp a, timestamp b);
+int ts_divide(timestamp a, timestamp b);
+int ts_cmp(timestamp a, timestamp b);
+
 void prinfPcapFileHeader(pcap_file_header *pfh);
 void printfPcapHeader(pcap_header *ph);
 // void printPcap(void *data, int size);
@@ -91,4 +158,9 @@ int parse_normal(void *data, int size, FlowQueue *fq, int len);
 int loadPcap();
 
 int queue_match(ip_header ih, tcp_header th,FlowQueue *fq);
+unsigned long get_dst_ip(void *data);
+
+int pfx_cmp(const void *a, const void *b);
+void update_sw(prefix *pfx, timestamp packet_time, timestamp bin);
+
 #endif

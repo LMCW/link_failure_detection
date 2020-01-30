@@ -1,14 +1,4 @@
 #include "prefix.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <time.h>
-
-#define MAX_ETH_FRAME 1514
-#define ETH_LENGTH 14
-#define ERROR_FILE_OPEN_FAILED -1
-#define ERROR_MEM_ALLOC_FAILED -2
-#define ERROR_PCAP_PARSE_FAILED -3
 
 int init(prefix_set *S, int Num){
 	S->count = 0;

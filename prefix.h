@@ -2,15 +2,10 @@
 #define prefix_h
 
 #include "pcap.h"
-#include "monitor.h"
-
-#define BIN_NUM 10
-#define BIN_TIME 0.08
-
-typedef struct prefix{
-	int ip;
-	int slash;
-}prefix;
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
 typedef struct prefix_set{
 	int *statistic;

@@ -1,11 +1,10 @@
-objects = main.o pcap.o monitor.o prefix.o
+objects = main.o pcap.o prefix.o
  
 pcaptest : $(objects)
 	gcc -o pcaptest  $(objects)
 
-main.o: pcap.h monitor.h prefix.h trie.h
+main.o: pcap.h prefix.h trie.h
 pcap.o: pcap.h
-monitor.o: monitor.h
 prefix.o: prefix.h
  
 .PHONY : clean
