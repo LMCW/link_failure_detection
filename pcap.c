@@ -593,6 +593,14 @@ ERROR:
 		fclose(fp);
 		fp =NULL;
 	}
+	if (pfx_set){
+		int i;
+		for (i=0;i<set_size;++i){
+			free(pfx_set[i].sliding_window);
+			queue_free(pfx_set[i].fq);
+		}
+		free(pfx_set);
+	}
 
 	printf("Total retransmission count: %d\n", rt_count);
 	printf("Total tcp count: %d\n", tcp_count);
