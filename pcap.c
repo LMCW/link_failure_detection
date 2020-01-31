@@ -484,7 +484,7 @@ void monitor(){
 	}
 
 	//prefix set definition or from file
-	int set_size = 12231;
+	int set_size = 2720;
 	prefix *pfx_set = pfx_set_from_file(set_size); //TODO: determine the count of prefixes to monitor
 	printf("Finish prefix file loading!\n");
 	//pcap file header
@@ -498,6 +498,7 @@ void monitor(){
 	}
 	int rt_count = 0;
 	int tcp_count = 0;
+	int total_count = 0;
 	start = time(NULL);
 	//monitoring pcap file
 	for (count=1;;++count){
@@ -527,8 +528,19 @@ void monitor(){
 		unsigned long dst_ip = ntohl((unsigned long)ih->dst_ip);
 		int pfx_index = binary_search_ip(dst_ip, pfx_set, set_size);
 		if (pfx_index == -1) {
+			// printf("Unhit IP: %lu.%lu.%lu.%lu\n", dst_ip >> 24,
+			// 	(dst_ip >> 16) & 0xff,
+			// 	(dst_ip >> 8) & 0xff,
+			// 	dst_ip & 0xff);
 			continue;//not belong to the prefixes to monitor
 		}
+		else{
+			// printf("Hit IP: %lu.%lu.%lu.%lu\n", dst_ip >> 24,
+			// 	(dst_ip >> 16) & 0xff,
+			// 	(dst_ip >> 8) & 0xff,
+			// 	dst_ip & 0xff);
+		}
+		total_count++;
 		if (ih->protocol == 6){//tcp packet;
 			tcp_count++;
 			tcp_header *th = (tcp_header *)malloc(20);
@@ -570,6 +582,13 @@ void monitor(){
 					&& current >= ntohl(th->seq) 
 					&& ((ntohs(ih->total_len) - ih_len - curr_buff_pos - tcp_hlen) > 0)){
 					// retransmission detection
+					printf("%lu.%lu.%lu.%lu/%d\t%u.%06u\n", pfx_set[pfx_index].ip >> 24,
+						(pfx_set[pfx_index].ip >> 16) & 0xff,
+						(pfx_set[pfx_index].ip >> 8) & 0xff,
+						pfx_set[pfx_index].ip & 0xff,
+						pfx_set[pfx_index].slash,
+						ph.ts.timestamp_s,
+						ph.ts.timestamp_ms);
 					int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
 					pfx_set[pfx_index].sliding_window[last_bin] += 1;
 					rt_count++;
@@ -604,6 +623,8 @@ ERROR:
 
 	printf("Total retransmission count: %d\n", rt_count);
 	printf("Total tcp count: %d\n", tcp_count);
+	printf("Total monitored packet count: %d\n", total_count);
+	printf("Total packet count: %d\n", count);
 	end = time(NULL);
 	printf("The total time spent:%ld\n", end - start);
 
@@ -657,15 +678,15 @@ void update_sw(prefix *pfx, timestamp packet_time, timestamp bin){
 		for (i = pfx->curr_sw_pos, j = 0;j < shift;++j){
 			sw_sum -= pfx->sliding_window[i];
 			//show sw_sum
-			printf("SW_INFO|\t%lu.%lu.%lu.%lu/%d\t%u.%06u\t%d\n", 
-				pfx->ip >> 24,
-				(pfx->ip >> 16) & 0xff,
-				(pfx->ip >> 8) & 0xff,
-				pfx->ip & 0xff,
-				pfx->slash,
-				pfx->current_bin_start_time.timestamp_s + ((pfx->current_bin_start_time.timestamp_ms+i*bin.timestamp_ms)/1000000),
-				(pfx->current_bin_start_time.timestamp_ms + i*bin.timestamp_ms)%1000000,
-				sw_sum);
+			// printf("SW_INFO|\t%lu.%lu.%lu.%lu/%d\t%u.%06u\t%d\n", 
+			// 	pfx->ip >> 24,
+			// 	(pfx->ip >> 16) & 0xff,
+			// 	(pfx->ip >> 8) & 0xff,
+			// 	pfx->ip & 0xff,
+			// 	pfx->slash,
+			// 	pfx->current_bin_start_time.timestamp_s + ((pfx->current_bin_start_time.timestamp_ms+i*bin.timestamp_ms)/1000000),
+			// 	(pfx->current_bin_start_time.timestamp_ms + i*bin.timestamp_ms)%1000000,
+			// 	sw_sum);
 			i = (i + 1) % BIN_NUM;
 			pfx->sliding_window[i] = 0;
 		}

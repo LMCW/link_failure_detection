@@ -3,7 +3,7 @@
 int init(prefix_set *S, int Num){
 	S->count = 0;
 	S->statistic = (int *)malloc(Num * sizeof(int));
-	S->ip_set = (int *)malloc(Num * sizeof(int));
+	S->ip_set = (unsigned long *)malloc(Num * sizeof(unsigned long));
 	S->slash_set = (int *)malloc(Num * sizeof(int));
 	if (S->statistic && S->ip_set && S->slash_set){
 		S->size = Num;
@@ -15,7 +15,7 @@ int init(prefix_set *S, int Num){
 	}
 }
 
-int findPrefix(prefix_set *S, int ip, int slash){
+int findPrefix(prefix_set *S, unsigned long ip, int slash){
 	int i;
 	for (i = 0;i < S->count;++i){
 		if (S->ip_set[i] == ip && S->slash_set[i] == slash){
@@ -25,7 +25,7 @@ int findPrefix(prefix_set *S, int ip, int slash){
 	return -1;
 }
 
-int newPrefix(prefix_set *S, int ip, int slash){
+int newPrefix(prefix_set *S, unsigned long ip, int slash){
 	if (S->count == S->size){
 		printf("Set if full!\n");
 		return -1;
@@ -38,29 +38,42 @@ int newPrefix(prefix_set *S, int ip, int slash){
 }
 
 int showSet(prefix_set *S){
-	int i, ip, slash;
+	int i, slash;
+	unsigned long ip;
 	for (i=0;i < S->count;++i){
 		ip = S->ip_set[i];
 		slash = S->slash_set[i];
-		printf("%d %d.%d.%d.%d/%d: %d\n", i, (ip & 0xff000000) >> 24, (ip & 0x00ff0000) >> 16, (ip & 0x0000ff00) >> 8, ip & 0x000000ff, 32 - slash, S->statistic[i]);
+		printf("%d %lu.%lu.%lu.%lu/%d: %d\n", i, (ip & 0xff000000) >> 24, (ip & 0x00ff0000) >> 16, (ip & 0x0000ff00) >> 8, ip & 0x000000ff, 32 - slash, S->statistic[i]);
 	}
 	return 0;
 }
 
 int set2file(prefix_set *S, int threshold){
 	FILE *fp = fopen("prefix.txt","w");
-	int i, ip, slash, count;
+	int i, slash, count;
+	unsigned long ip;
 	count = 0;
 	for (i=0;i < S->count;++i){
 		if (S->statistic[i] < threshold)
 			continue;
 		ip = S->ip_set[i];
 		slash = S->slash_set[i];
-		fprintf(fp, "%d.%d.%d.%d/%d\n", (ip & 0xff000000) >> 24, (ip & 0x00ff0000) >> 16, (ip & 0x0000ff00) >> 8, ip & 0x000000ff, 32 - slash);
+		fprintf(fp, "%lu.%lu.%lu.%lu/%d\n", (ip & 0xff000000) >> 24, (ip & 0x00ff0000) >> 16, (ip & 0x0000ff00) >> 8, ip & 0x000000ff, slash);
 		count += 1;
 	}
 	printf("Wrote: %d\n", count);
 	return 0;
+}
+
+void set_statistics(prefix_set *S, int threshold){
+	int total, th_sum, i;
+	for (i=0,total=0,th_sum=0;i < S->count;++i){
+		total += S->statistic[i];
+		if (S->statistic[i] > threshold)
+			th_sum += S->statistic[i];
+	}
+	printf("Total packet number: %d. Active prefix packet number: %d.\n", total, th_sum);
+	return;
 }
 
 int setfree(prefix_set *S){
@@ -139,8 +152,9 @@ int generateSet(prefix_set *S, int slash){
 		if (ih->ver_hlen != 0x45){//packet with ethernet header
 			memcpy(ih, buff + ETH_LENGTH, 20);
 		}
-		int ip,pos;
-		ip = ih->src_ip >> slash << slash;
+		unsigned long ip;
+		int pos;
+		ip = ntohl(ih->dst_ip) >> (32 - slash) << (32 - slash);
 		pos = findPrefix(S, ip, slash);
 		if (pos != -1){//found
 			S->statistic[pos] += 1;
@@ -165,7 +179,8 @@ ERROR:
 	queue_free(&fq);
 
 	// showSet(S);
-	set2file(S, 50);
+	set2file(S, 0);
+	// set_statistics(S, 50);
 	setfree(S);
 
 	end = time(NULL);
