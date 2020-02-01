@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <time.h>
+#include "hash_table.h"
 
 typedef unsigned int bpf_u_int32;
 typedef unsigned short u_short;
@@ -22,7 +23,6 @@ typedef unsigned char u_int8;
 #define ERROR_MEM_ALLOC_FAILED -2
 #define ERROR_PCAP_PARSE_FAILED -3
 #define ETH_LENGTH 14
-#define MAX_QUEUE_LENGTH 100
 #define BIN_NUM 10
 #define BIN_TIME 0.08
 /*
@@ -100,24 +100,6 @@ typedef struct tcp_header{
 	u_short urgentpointer;	
 }tcp_header;
 
-typedef struct flow{
-	bpf_u_int32 src;
-	bpf_u_int32 dst;
-	bpf_u_int32 src_p;
-	bpf_u_int32 dst_p;
-	bpf_u_int32 expect_seq;
-	bpf_u_int32 curr_ack;
-	bpf_u_int32 last_size;
-}flow;
-
-typedef struct FlowQueue{
-	flow *queue;
-	int head;
-	int tail;
-	int count;
-	int size;
-}FlowQueue;
-
 typedef struct prefix{
 	unsigned long ip;
 	int slash;
@@ -131,16 +113,11 @@ typedef struct prefix{
 	*/
 	int curr_sw_pos;
 	timestamp current_bin_start_time;
-	FlowQueue *fq;
+	hash_table *ht;
 }prefix;
 
-int queue_init(FlowQueue *Q, int size);
-int queue_free(FlowQueue *Q);
-int queue_empty(FlowQueue * Q);
-int queue_enqueue(FlowQueue *Q, flow *item);
-int queue_dequeue(FlowQueue *Q);
-
 int flow_match(bpf_u_int32 src, bpf_u_int32 dst, bpf_u_int32 src_p, bpf_u_int32 dst_p, flow f);
+
 
 prefix *pfx_set_from_file(int size);
 int ip_pfx_match(unsigned long ip, prefix pfx);
@@ -153,11 +130,6 @@ int ts_cmp(timestamp a, timestamp b);
 void prinfPcapFileHeader(pcap_file_header *pfh);
 void printfPcapHeader(pcap_header *ph);
 // void printPcap(void *data, int size);
-int parse(void *data, int size, FlowQueue *fq, int len);
-int parse_normal(void *data, int size, FlowQueue *fq, int len);
-int loadPcap();
-
-int queue_match(ip_header ih, tcp_header th,FlowQueue *fq);
 unsigned long get_dst_ip(void *data);
 
 int pfx_cmp(const void *a, const void *b);

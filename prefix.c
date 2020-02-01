@@ -88,8 +88,6 @@ int setfree(prefix_set *S){
 int generateSet(prefix_set *S, int slash){
 	pcap_file_header pfh;
 	pcap_header ph;
-	FlowQueue fq;
-	queue_init(&fq,MAX_QUEUE_LENGTH);
 	int count = 0;
 	void *buff = NULL;
 	int readSize = 0;
@@ -176,7 +174,6 @@ ERROR:
 		fclose(fp);
 		fp =NULL;
 	}
-	queue_free(&fq);
 
 	// showSet(S);
 	set2file(S, 0);

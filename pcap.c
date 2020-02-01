@@ -37,259 +37,6 @@ void printfPcapHeader(pcap_header *ph){
 	return;
 }
 
-int loadPcap(){
-	printf("sizeof:int %lu,unsigned int %lu,char %lu,unsigned char %lu,short:%lu,unsigned short:%lu,long:%lu\n",
-		    sizeof(int),sizeof(unsigned int),sizeof(char),sizeof(unsigned char),sizeof(short),sizeof(unsigned short), sizeof(long));
-	pcap_file_header pfh;
-	pcap_header ph;
-	FlowQueue fq;
-	queue_init(&fq,MAX_QUEUE_LENGTH);
-	int count = 0;
-	void *buff = NULL;
-	int readSize = 0;
-	int ret = 0;
-
-	char *filename;
-	filename = (void *)malloc(100);
-	memset(filename,0,100);
-	printf("Pcap filename:");
-	scanf("%s", filename);
-	FILE *fp = fopen(filename, "rw");
-	if (fp ==NULL){
-		fprintf(stderr, "Open file %s error.\n", filename);
-		ret = ERROR_FILE_OPEN_FAILED;
-		goto ERROR;
-	}
-
-	time_t start, end;
-	start = time(NULL);
-
-	fread(&pfh, sizeof(pcap_file_header), 1, fp);
-	prinfPcapFileHeader(&pfh);
-
-	buff = (void *)malloc(MAX_ETH_FRAME);
-
-	int tcp_count = 0;
-	int ret_count = 0;
-	int prt = -1;
-	for (count=1;;++count){
-		// break;
-		memset(buff,0,MAX_ETH_FRAME);
-		//read pcap header to get a packet
-		readSize = fread(&ph, sizeof(pcap_header),1,fp);
-		if (readSize <= 0) break;
-		// printfPcapHeader(&ph);
-
-		/*print the first timestamp*/
-		if (count == 1 || count == 16829835){
-			printfPcapHeader(&ph);
-		}
-
-		if (buff == NULL){
-			fprintf(stderr, "malloc memory faild.\n");
-			ret = ERROR_MEM_ALLOC_FAILED;
-			goto ERROR;
-		}
-
-		//get a packet data frame
-		readSize = fread(buff, 1, ph.capture_len, fp);
-		if (readSize != ph.capture_len){
-			free(buff);
-			fprintf(stderr, "pcap file parse error.\n");
-			ret = ERROR_PCAP_PARSE_FAILED;
-			goto ERROR;
-		}
-		prt = parse_normal(buff, ph.capture_len, &fq, ph.len);
-		// printf("The size of queue: %d\n", fq.count);
-		if (prt == 6 || prt == 7777) ++tcp_count;
-		if (prt == 7777){
-			// printf("%u.%u\n", ph.ts.timestamp_s, ph.ts.timestamp_ms);
-			printf("Retransmission: %d\n", count);
-			++ret_count; 
-		}
-		// printf("===count:%d,readSize:%d===\n",count,readSize);
-		if (feof(fp) || readSize <= 0) 
-			break;
-	}
-
-ERROR:
-	if (buff){
-		free(buff);
-		buff=NULL;
-	}
-	if (fp){
-		fclose(fp);
-		fp =NULL;
-	}
-	queue_free(&fq);
-	printf("The total packet count:%d, the total tcp packet count:%d, monitored retransmission:%d\n", count, tcp_count, ret_count);
-
-	end = time(NULL);
-	printf("The total time spent:%ld\n", end - start);
-	return ret;
-}
-
-int queue_match(ip_header ih, tcp_header th, FlowQueue *fq){
-	int i,flag,pos;
-	i = (fq->head - 1) % fq->size;
-	if (i <0)
-		i = i + fq->size;
-	if (i >= fq->count)
-		return -1;
-	// printf("The head of queue: %d, tail: %d\n", i, fq->tail);
-	pos = -1;
-	flag = 0;
-	while(i != fq->tail){
-		flag = flow_match(ih.src_ip, ih.dst_ip, th.src_port, th.dst_port, fq->queue[i]);
-		if (flag) {
-			pos = i;
-			break;
-		}
-		i = (i-1) % fq->size;
-		if (i < 0)
-			i = i + fq->size;
-	}
-
-	if (pos == -1){
-		flag = flow_match(ih.src_ip, ih.dst_ip, th.src_port, th.dst_port, fq->queue[fq->tail]);
-		if (flag)
-			pos = fq->tail;
-	}
-	// printf("\n");
-	return pos;
-}
-
-int parse(void *data, int size, FlowQueue *fq, int len){
-
-	ip_header *ih;
-	int ret;
-	ih = (void *)malloc(20);
-	memcpy(ih, data, 20);
-	int ih_len = (ih->ver_hlen % 16) * 4;
-	ret = ih->protocol;
-	if (ret == 6){
-		//tcp packet
-		tcp_header *th;
-		th = (void *)malloc(20);
-		memcpy(th, data + ih_len, 20);
-		// printf("Seq:%u Ack:%u\n",ntohl(th->seq), ntohl(th->ack));
-		// printf("src port: %u\n", ntohs(th->src_port));
-		int tcp_hlen = (th->header_len >> 4) * 4;
-		int pos;
-		pos = queue_match(*ih, *th, fq);
-		// printf("Pos: %d\n", pos);
-		if (pos == -1){//can't find the corresponding flow
-			flow *tmp;
-			tmp = (void *)malloc(sizeof(flow));
-			tmp->src = ih->src_ip;
-			tmp->dst = ih->dst_ip;
-			tmp->src_p = th->src_port;
-			tmp->dst_p = th->dst_port;
-			tmp->expect_seq = ntohl(th->seq) + (ntohs(ih->total_len) - ih_len - tcp_hlen);
-			tmp->curr_ack = ntohl(th->ack);
-			tmp->last_size = len;
-			// printf("Expect_seq: %u\n", tmp->expect_seq);
-			if (fq->size == fq->count){
-				// printf("%d %d\n", fq->size, fq->count);
-				queue_dequeue(fq);
-			}
-			queue_enqueue(fq, tmp);
-			free(tmp);
-		}
-		else{//found
-			int current;
-			current = ntohl(th->seq) + (ntohs(ih->total_len) - ih_len - tcp_hlen);
-			if (current == fq->queue[pos].expect_seq && ((ntohs(ih->total_len) - ih_len - tcp_hlen) > 0 || (th->flags & 2))){
-				// printf("Expect_seq: %u\n", current);
-				if (current >= ntohl(th->seq)){
-					ret = 7777;
-				}
-
-
-				if (th->flags & 1){//FIN packet
-					ret = 6;
-				}
-			}
-			fq->queue[pos].expect_seq = current;
-			fq->queue[pos].curr_ack = ntohl(th->ack);
-			fq->queue[pos].last_size = len;
-		}
-		free(th); 
-	}
-
-	free(ih);
-	return ret;
-}
-
-int parse_normal(void *data, int size, FlowQueue *fq, int len){
-	//judge if there is an ethernet header
-	ip_header *ih;
-	int ret;
-	ih = (void *)malloc(20);
-	memcpy(ih, data, 20);
-	if (ih->ver_hlen == 0x45){//raw packer data without eth header
-		free(ih);
-		return parse(data, size, fq, len);
-	}
-	else{//Eth header exists
-		memcpy(ih, data + ETH_LENGTH, 20);
-		ret = ih->protocol;
-		int ih_len = (ih->ver_hlen % 16) * 4;
-		if (ret == 6){
-			tcp_header *th;
-			th = (void *)malloc(20);
-			memcpy(th, data + ih_len + ETH_LENGTH, 20);
-
-			//tcp header length
-			int tcp_hlen = (th->header_len >> 4) * 4;
-			int pos;
-			pos = queue_match(*ih, *th, fq);
-			// printf("Pos: %d\n", pos);
-			// printf("%u %u\n", ntohl(th->seq), ntohl(th->seq) + size - ih_len - ETH_LENGTH - tcp_hlen);
-			if (pos == -1){//can't find the corresponding flow
-				flow *tmp;
-				tmp = (void *)malloc(sizeof(flow));
-				tmp->src = ih->src_ip;
-				tmp->dst = ih->dst_ip;
-				tmp->src_p = th->src_port;
-				tmp->dst_p = th->dst_port;
-				tmp->expect_seq = ntohl(th->seq) + ntohs(ih->total_len) - ih_len - ETH_LENGTH - tcp_hlen;
-				tmp->curr_ack = ntohl(th->ack);
-				tmp->last_size = len;
-				// printf("%u %u %u %u\n", tmp->expect_seq, ntohs(ih->total_len), size, th->header_len);
-				if (fq->size == fq->count){
-					// printf("%d %d\n", fq->size, fq->count);
-					queue_dequeue(fq);
-				}
-				queue_enqueue(fq, tmp);
-				free(tmp);
-			}
-			else{//found
-				int current;
-				current = ntohl(th->seq) + (ntohs(ih->total_len) - ih_len - ETH_LENGTH - tcp_hlen);
-				// printf("%d\n", (size - ih_len - ETH_LENGTH - tcp_hlen));
-				// printf("%u %u\n", ntohl(th->seq), ntohs(ih->total_len));
-				if (current == fq->queue[pos].expect_seq && ntohl(th->ack) == fq->queue[pos].curr_ack && fq->queue[pos].last_size <= len){
-				// if (current == fq->queue[pos].expect_seq && ntohl(th->ack) == fq->queue[pos].curr_ack){
-					// struct in_addr src, dst;
-					// src.s_addr = ih->src_ip;
-					// dst.s_addr = ih->dst_ip;
-					// printf("TCP retransmission: src:%u dst:%u, expected seq is: %u, current seq is: %u\n", ih->src_ip, ih->dst_ip, fq->queue[pos].expect_seq, current);
-					// printf("TCP retransmission: src:%s dst:%s\n", inet_ntoa(src), inet_ntoa(dst));
-					ret = 7777;
-				}
-				fq->queue[pos].expect_seq = current;
-				fq->queue[pos].curr_ack = ntohl(th->ack);
-				fq->queue[pos].last_size = len;
-			}
-			free(th); 
-		}
-
-		free(ih);
-		return ret;
-	}
-}
-
 unsigned long get_dst_ip(void *data){
 	ip_header *ih = NULL;
 	ih = (ip_header *)malloc(20);
@@ -297,63 +44,6 @@ unsigned long get_dst_ip(void *data){
 	if (ih->ver_hlen != 0x45)
 		memcpy(ih, data + ETH_LENGTH, 20);
 	return (unsigned long)ih->dst_ip;
-}
-
-int queue_init(FlowQueue *Q, int size){
-	Q->head = 0;
-	Q->tail = 0;
-	Q->count = 0;
-	Q->queue = (flow *)malloc(size * sizeof(flow));
-	if (Q->queue){
-		Q->size = size;
-		return 1;
-	}
-	else{
-		Q->size = 0;
-		fprintf(stderr, "Queue init failed\n");
-		return 0;
-	}
-}
-
-int queue_free(FlowQueue *Q){
-	free(Q->queue);
-	Q->head = 0;
-	Q->tail = 0;
-	Q->count = 0;
-	Q->size = 0;
-	Q->queue = NULL;
-	return 1;
-}
-
-int queue_empty(FlowQueue * Q) {
-    if (Q->count == 0)
-        return 1;
-    else 
-    	return 0;
-}
-
-int queue_enqueue(FlowQueue *Q, flow *item){
-	if (Q->count > Q->size)
-		return -1;
-
-	memcpy(&(Q->queue[Q->head]), item, sizeof(flow));
-	// printf("Enqueue flow src: %u, dst:%u\n", Q->queue[Q->head].src, Q->queue[Q->head].dst);
-	// if (Q->size == Q->count + 1)
-	// 	printf("Enqueue: %u %u %u\n", Q->head,Q->queue[Q->head].src, Q->queue[Q->head].dst);
-	Q->head = (Q->head + 1) % Q->size;
-	Q->count++;
-	return 1;
-}
-
-int queue_dequeue(FlowQueue *Q){
-	if (!queue_empty(Q)){
-		// *item = Q->queue[Q->tail];
-		// printf("Dequeue: %u %u %u\n", Q->tail, Q->queue[Q->tail].src, Q->queue[Q->tail].dst);
-		Q->tail = (Q->tail + 1) % Q->size;
-		Q->count--;
-		return 1;
-	}
-	return 0;
 }
 
 int flow_match(bpf_u_int32 src, bpf_u_int32 dst, bpf_u_int32 src_p, bpf_u_int32 dst_p, flow f){
@@ -395,9 +85,10 @@ prefix *pfx_set_from_file(int size){
 		set[i].curr_sw_pos = 0;
 		set[i].current_bin_start_time.timestamp_s = 0;
 		set[i].current_bin_start_time.timestamp_ms = 0;
-		set[i].fq = (FlowQueue *)malloc(sizeof(FlowQueue));
-		queue_init(set[i].fq, MAX_QUEUE_LENGTH);
+		set[i].ht = (void *)malloc(sizeof(hash_table));
+		hash_table_init(set[i].ht);
 	}
+
 	free(filename);
 	free(buff);
 
@@ -499,6 +190,8 @@ void monitor(){
 	int rt_count = 0;
 	int tcp_count = 0;
 	int total_count = 0;
+
+	int expand_count = 0;
 	start = time(NULL);
 	//monitoring pcap file
 	for (count=1;;++count){
@@ -528,17 +221,10 @@ void monitor(){
 		unsigned long dst_ip = ntohl((unsigned long)ih->dst_ip);
 		int pfx_index = binary_search_ip(dst_ip, pfx_set, set_size);
 		if (pfx_index == -1) {
-			// printf("Unhit IP: %lu.%lu.%lu.%lu\n", dst_ip >> 24,
-			// 	(dst_ip >> 16) & 0xff,
-			// 	(dst_ip >> 8) & 0xff,
-			// 	dst_ip & 0xff);
+			free(ih);
 			continue;//not belong to the prefixes to monitor
 		}
 		else{
-			// printf("Hit IP: %lu.%lu.%lu.%lu\n", dst_ip >> 24,
-			// 	(dst_ip >> 16) & 0xff,
-			// 	(dst_ip >> 8) & 0xff,
-			// 	dst_ip & 0xff);
 		}
 		total_count++;
 		if (ih->protocol == 6){//tcp packet;
@@ -551,18 +237,18 @@ void monitor(){
 				free(ih);
 				continue;
 			}
-
 			int tcp_hlen = (th->header_len >> 4) << 2;
 
-			int pos = queue_match(*ih, *th, pfx_set[pfx_index].fq);
 			if (pfx_set[pfx_index].current_bin_start_time.timestamp_s == 0 && pfx_set[pfx_index].current_bin_start_time.timestamp_ms == 0){
 				pfx_set[pfx_index].current_bin_start_time.timestamp_s = ph.ts.timestamp_s;
 				pfx_set[pfx_index].current_bin_start_time.timestamp_ms = ph.ts.timestamp_ms;
 			}
 			update_sw(&pfx_set[pfx_index], ph.ts, bin);
+			int pos = search_hash_table(pfx_set[pfx_index].ht, ntohl(ih->src_ip), ntohl(ih->dst_ip), th->src_port, th->dst_port);
 			if (pos == -1){
 				//can't find the corresponding flow
 				flow *tmp = (flow *)malloc(sizeof(flow));
+				tmp->isnull = 0;
 				tmp->src = ntohl(ih->src_ip);
 				tmp->dst = ntohl(ih->dst_ip);
 				tmp->src_p = th->src_port;
@@ -570,15 +256,18 @@ void monitor(){
 				tmp->expect_seq = ntohl(th->seq) + ntohs(ih->total_len) - ih_len - curr_buff_pos - tcp_hlen;
 				tmp->curr_ack = ntohl(th->ack);
 				tmp->last_size = ph.len;
-				if (pfx_set[pfx_index].fq->count == pfx_set[pfx_index].fq->size)
-					queue_dequeue(pfx_set[pfx_index].fq);
-				queue_enqueue(pfx_set[pfx_index].fq, tmp);
+				if (pfx_set[pfx_index].ht->count == pfx_set[pfx_index].ht->size){
+					expand_count++;
+					// hash_table_expand(pfx_set[pfx_index].ht);
+				}
+				else
+					insert_hash_table(pfx_set[pfx_index].ht, tmp);
 				free(tmp);
 			}
 			else{
 				unsigned int current = ntohl(th->seq) + ntohs(ih->total_len) - ih_len - curr_buff_pos - tcp_hlen;
-				// printf("Expect %u Current %u\n", pfx_set[pfx_index].fq->queue[pos].expect_seq, current);
-				if (current == pfx_set[pfx_index].fq->queue[pos].expect_seq 
+				// printf("Expect %u Current %u\n", pfx_set[pfx_index].ht->table[pos].expect_seq, current);
+				if (current == pfx_set[pfx_index].ht->table[pos].expect_seq 
 					&& current >= ntohl(th->seq) 
 					&& ((ntohs(ih->total_len) - ih_len - curr_buff_pos - tcp_hlen) > 0)){
 					// retransmission detection
@@ -593,13 +282,14 @@ void monitor(){
 					pfx_set[pfx_index].sliding_window[last_bin] += 1;
 					rt_count++;
 				}
-				pfx_set[pfx_index].fq->queue[pos].expect_seq = current;
-				pfx_set[pfx_index].fq->queue[pos].curr_ack = ntohl(th->ack);
-				pfx_set[pfx_index].fq->queue[pos].last_size = ph.len;
+				pfx_set[pfx_index].ht->table[pos].expect_seq = current;
+				pfx_set[pfx_index].ht->table[pos].curr_ack = ntohl(th->ack);
+				pfx_set[pfx_index].ht->table[pos].last_size = ph.len;
 			}
 			free(th);
 		}
 		free(ih);
+		// printf("%d\n", count);
 	}
 
 	//Memory free and summary
@@ -616,10 +306,11 @@ ERROR:
 		int i;
 		for (i=0;i<set_size;++i){
 			free(pfx_set[i].sliding_window);
-			queue_free(pfx_set[i].fq);
+			free(pfx_set[i].ht);
 		}
 		free(pfx_set);
 	}
+	printf("Total expand count: %d\n", expand_count);
 
 	printf("Total retransmission count: %d\n", rt_count);
 	printf("Total tcp count: %d\n", tcp_count);
