@@ -1,7 +1,8 @@
 #ifndef HASH_TABLE
 #define HASH_TABLE
 
-#define HASH_TABLE_INIT_SIZE 29989
+// #define HASH_TABLE_INIT_SIZE 29989
+#define HASH_TABLE_INIT_SIZE 9973
 
 typedef struct flow{
 	int isnull;

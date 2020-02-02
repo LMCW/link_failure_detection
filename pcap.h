@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include "hash_table.h"
+#include "rtt.h"
 
 typedef unsigned int bpf_u_int32;
 typedef unsigned short u_short;
@@ -133,6 +134,6 @@ void printfPcapHeader(pcap_header *ph);
 unsigned long get_dst_ip(void *data);
 
 int pfx_cmp(const void *a, const void *b);
-void update_sw(prefix *pfx, timestamp packet_time, timestamp bin);
+void update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp);
 
 #endif

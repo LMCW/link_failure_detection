@@ -8,7 +8,7 @@ int main(int argc, char const *argv[])
 
 	// prefix_set S;
 	// init(&S, 100000);
-	// generateSet(&S,16);
+	// generateSet(&S,24);
 	
 	return 0;
 }
