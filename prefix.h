@@ -1,27 +1,49 @@
 #ifndef prefix_h
 #define prefix_h
 
-#include "pcap.h"
+#include "trie.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
 
-typedef struct prefix_set{
-	int *statistic;
-	unsigned long *ip_set;
-	int *slash_set; 
+#define MAX_PFX_NUM 500000
+#define MAX_MONITOR_PATH_NUM 199999 //TODO: determine the exact number according to the rib file
+#define PATH_THRESHOLD 100
+
+typedef struct simple_prefix{
+	unsigned int ip;
+	int slash;
+}simple_prefix;
+
+typedef struct Prefix_set{
+	simple_prefix pfx_set[MAX_PFX_NUM];
+	as_path covered_path_set[MAX_MONITOR_PATH_NUM]; //hash table to store as paths
+	int covered_path_count[MAX_MONITOR_PATH_NUM];
 	int count;
-	int size;
-}prefix_set;
+}Prefix_set;
 
-int init(prefix_set *S, int Num);
-int findPrefix(prefix_set *S, unsigned long ip, int slash);
-int newPrefix(prefix_set *S, unsigned long ip, int slash);
-int generateSet(prefix_set *S, int slash);
-int showSet(prefix_set *S);
-int set2file(prefix_set *S, int threshold);
-void set_statistics(prefix_set *S, int threshold);
-int setfree(prefix_set *S);
+void init_ps(Prefix_set *set);//Initialization of the prefix set
 
+void free_ps(Prefix_set *set);//free memory of the prefix set
+
+int add_prefix(Prefix_set *set, char *pfx, trie_node *rib_root); /* if a path to the prefix is new to the set, 
+																			* add the prefix to the set.
+																			* A path is new means path occurrence count 
+																			* is no more some threshold. 
+																			*/
+
+void generate_set();
+
+void pcap_to_raw_set();
+
+int pfx_ip(char *pfx);
+
+int pfx_slash(char *pfx);
+
+int insert_path(as_path *asp_set, as_path path);
+
+int search_path(as_path *asp_set, as_path path);
+
+int path_hash(as_path asp); //hash function
 #endif

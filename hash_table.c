@@ -1,7 +1,4 @@
 #include "hash_table.h"
-#include "string.h"
-#include "stdlib.h"
-#include "stdio.h"
 
 int hash_table_init(hash_table *h){
 	h->count = 0;
@@ -53,7 +50,7 @@ int search_hash_table(hash_table *h, unsigned int src_ip,
 	return -1;
 }
 
-int hash(unsigned int src_ip, 
+static inline int hash(unsigned int src_ip, 
 	unsigned int dst_ip, unsigned int src_port, unsigned int dst_port, int size){
 	//hash function should be related to the hash table size
 	// if (size % HASH_TABLE_INIT_SIZE){

@@ -1,13 +1,14 @@
-objects = main.o hash_table.o rtt.o pcap.o prefix.o
+objects = main.o trie.o hash_table.o rtt.o pcap.o prefix.o
  
 pcaptest : $(objects)
 	gcc -o pcaptest  $(objects)
 
-main.o: pcap.h prefix.h trie.h
-hash_table.o: hash_table.h
-rtt.o: rtt.h
-pcap.o: pcap.h
-prefix.o: prefix.h
+main.o: main.c
+hash_table.o: hash_table.c
+rtt.o: rtt.c
+pcap.o: pcap.c
+prefix.o: prefix.c
+trie.o: trie.c
 
  
 .PHONY : clean

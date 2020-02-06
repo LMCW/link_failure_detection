@@ -1,5 +1,4 @@
 #include "pcap.h"
-#include "trie.h"
 
 void prinfPcapFileHeader(pcap_file_header *pfh){
 	if (pfh == NULL) return;
@@ -147,6 +146,7 @@ int binary_search_ip(unsigned long ip, prefix *pfx_set, int set_size){
 void monitor(){
 	//link failure detection
 	//load pcap
+	trie_node *rib_root = load_rib();
 	pcap_file_header pfh;
 	pcap_header ph;
 
@@ -175,8 +175,15 @@ void monitor(){
 	}
 
 	//prefix set definition or from file
-	int set_size = 2;
+	int set_size = 4256;
+	// printf("How many prefixes to monitor?");
+	// scanf("%d", &set_size);
+	if (set_size <= 0)
+		return;
 	prefix *pfx_set = pfx_set_from_file(set_size); //TODO: determine the count of prefixes to monitor
+	timestamp *timer_set = (timestamp *)malloc(sizeof(timestamp) * set_size);
+	memset(timer_set, 0, sizeof(timestamp) * set_size);
+
 	printf("Finish prefix file loading!\n");
 	//pcap file header
 	fread(&pfh, sizeof(pcap_file_header), 1, fp);
@@ -190,8 +197,8 @@ void monitor(){
 	int rt_count = 0;
 	int tcp_count = 0;
 	int total_count = 0;
+	int not_match = 0;
 
-	int expand_count = 0;
 	start = time(NULL);
 	//monitoring pcap file
 	FILE *log_fp = fopen("log.txt","w");
@@ -219,13 +226,28 @@ void monitor(){
 			curr_buff_pos += ETH_LENGTH;
 			memcpy(ih, buff + ETH_LENGTH, 20);
 		}
-		unsigned long dst_ip = ntohl((unsigned long)ih->dst_ip);
-		int pfx_index = binary_search_ip(dst_ip, pfx_set, set_size);
+		unsigned long dst_ip = ntohl(ih->dst_ip);
+		trie_node *tmp_node = trie_search(rib_root, ip_key_l(dst_ip));
+		unsigned int tmp_pfx_ip = key_ip(tmp_node->pfx_key);
+		int pfx_index = binary_search_ip(tmp_pfx_ip, pfx_set, set_size);//TODO: ip to pfx mapping new method
 		if (pfx_index == -1) {
+			// pfx_index = 0;
+			// printf("%lu.%lu.%lu.%lu\t%lu.%lu.%lu.%lu\n", 
+			// 	dst_ip >> 24,
+			// 	(dst_ip >> 16) & 0xff,
+			// 	(dst_ip >> 8) & 0xff,
+			// 	dst_ip & 0xff,
+			// 	tmp_pfx_ip >> 24,
+			// 	(tmp_pfx_ip >> 16) & 0xff,
+			// 	(tmp_pfx_ip >> 8) & 0xff,
+			// 	tmp_pfx_ip & 0xff);
+			not_match++;
 			free(ih);
-			continue;//not belong to the prefixes to monitor
+			continue;
 		}
-		else{
+		else if (pfx_index == 0){
+			free(ih);
+			continue;
 		}
 		total_count++;
 		if (ih->protocol == 6){//tcp packet;
@@ -256,9 +278,12 @@ void monitor(){
 				tmp->dst_p = th->dst_port;
 				tmp->expect_seq = ntohl(th->seq) + ntohs(ih->total_len) - ih_len - curr_buff_pos - tcp_hlen;
 				tmp->curr_ack = ntohl(th->ack);
-				tmp->last_size = ph.len;
+				tmp->last_ts.timestamp_s = ph.ts.timestamp_s;
+				tmp->last_ts.timestamp_ms = ph.ts.timestamp_ms;
+				tmp->rd.smooth_rtt = 0;
+				tmp->rd.rtt_var = 0;
+				tmp->rd.rto = 3;
 				if (pfx_set[pfx_index].ht->count == pfx_set[pfx_index].ht->size){
-					expand_count++;
 					// hash_table_expand(pfx_set[pfx_index].ht);
 				}
 				else
@@ -285,10 +310,17 @@ void monitor(){
 				}
 				else{
 					//if a packet is not a retransmission, we can use it to measure rtt
+					timestamp rtt_sample = ts_minus(ph.ts, pfx_set[pfx_index].ht->table[pos].last_ts);
+					//if the sample is greater than some threshold, abandon this sample
+					int ms_sample = rtt_sample.timestamp_s * 1000000 + rtt_sample.timestamp_ms;
+					if (ms_sample <= 5000000){
+						//flow smooth rtt update
+						rtt_update(&(pfx_set[pfx_index].ht->table[pos].rd), ms_sample);
+						// threshold_set(&(pfx_set[pfx_index]), &(timer_set[pfx_index]));
+					}
 				}
 				pfx_set[pfx_index].ht->table[pos].expect_seq = current;
 				pfx_set[pfx_index].ht->table[pos].curr_ack = ntohl(th->ack);
-				pfx_set[pfx_index].ht->table[pos].last_size = ph.len;
 			}
 			free(th);
 		}
@@ -311,15 +343,29 @@ ERROR:
 		log_fp = NULL;
 	}
 	if (pfx_set){
+		//flow count statistics
+		FILE *flow_count = fopen("flow_stats.txt","w");
 		int i;
-		for (i=0;i<set_size;++i){
+		for (i = 0;i < set_size;++i){
+			fprintf(flow_count, "Prefix flow count|\t%lu.%lu.%lu.%lu/%d\t%d\n", 
+				pfx_set[i].ip >> 24,
+				(pfx_set[i].ip >> 16) & 0xff,
+				(pfx_set[i].ip >> 8) & 0xff,
+				pfx_set[i].ip & 0xff,
+				pfx_set[i].slash, 
+				pfx_set[i].ht->count);
+		}
+		for (i = 0;i < set_size;++i){
 			free(pfx_set[i].sliding_window);
 			free(pfx_set[i].ht);
 		}
-		free(pfx_set);
+		fclose(flow_count);
+		free(pfx_set);	
 	}
-	printf("Total expand count: %d\n", expand_count);
-
+	if (rib_root){
+		freeTrie(rib_root);
+	}
+	printf("Not match amount: %d\n", not_match);
 	printf("Total retransmission count: %d\n", rt_count);
 	printf("Total tcp count: %d\n", tcp_count);
 	printf("Total monitored packet count: %d\n", total_count);
@@ -377,7 +423,7 @@ void update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 		for (i = pfx->curr_sw_pos, j = 0;j < shift;++j){
 			sw_sum -= pfx->sliding_window[i];
 			//show sw_sum
-			fprintf(fp, "SW_INFO|\t%lu.%lu.%lu.%lu/%d\t%u.%06u\t%d\n", 
+			fprintf(fp, "SW_INFO|\t%lu.%lu.%lu.%lu/%d\t%u.%06u\t%d\t%d\n", 
 				pfx->ip >> 24,
 				(pfx->ip >> 16) & 0xff,
 				(pfx->ip >> 8) & 0xff,
@@ -385,7 +431,8 @@ void update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 				pfx->slash,
 				pfx->current_bin_start_time.timestamp_s + ((pfx->current_bin_start_time.timestamp_ms+i*bin.timestamp_ms)/1000000),
 				(pfx->current_bin_start_time.timestamp_ms + i*bin.timestamp_ms)%1000000,
-				sw_sum);
+				sw_sum,
+				pfx->ht->count);
 			i = (i + 1) % BIN_NUM;
 			pfx->sliding_window[i] = 0;
 		}
@@ -394,6 +441,23 @@ void update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 		pfx->current_bin_start_time.timestamp_ms = (pfx->current_bin_start_time.timestamp_ms + shift * bin.timestamp_ms) % 1000000;
 	}
 	
+	return;
+}
+
+void threshold_set(prefix *pfx, timestamp *timer){
+	if (timer->timestamp_s < 10){
+		//if timer hasn't reach 10 seconds, do not change the threshold
+		return;
+	}
+	int i;
+	for (i=0;i < pfx->ht->size;++i){
+		if (pfx->ht->table[i].isnull) 
+			continue;
+
+	}
+
+	timer->timestamp_s = 0;
+	timer->timestamp_ms = 0;
 	return;
 }
 

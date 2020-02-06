@@ -1,18 +1,20 @@
 #ifndef rtt_h
 #define rtt_h
 
-#define G 0.01
-#define alpha 0.125
-#define beta 0.25
+#define G 1000		//1000microsecond is 1millisecond
 
+/*
+Smooth rtt and rtt variation are in the same unit as timestamp_ms, microsecond 
+*/
 typedef struct rtt_distribution{
-	float smooth_rtt;
-	float rtt_var;
-	float rto;
+	int smooth_rtt;
+	int rtt_var;
+	int rto;
 }rtt_distribution;
 
-void rtt_init(rtt_distribution *rd, float first_sample);
-
-void rtt_update(rtt_distribution *rd, float sample);
+static inline int max(int a, int b);
+static inline void rtt_init(rtt_distribution *rd, int first_sample);
+void rtt_update(rtt_distribution *rd, int sample);
+int threshold_simulation(rtt_distribution *rd);
 
 #endif

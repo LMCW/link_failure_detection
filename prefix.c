@@ -1,97 +1,76 @@
 #include "prefix.h"
+#include "pcap.h"
 
-int init(prefix_set *S, int Num){
-	S->count = 0;
-	S->statistic = (int *)malloc(Num * sizeof(int));
-	S->ip_set = (unsigned long *)malloc(Num * sizeof(unsigned long));
-	S->slash_set = (int *)malloc(Num * sizeof(int));
-	if (S->statistic && S->ip_set && S->slash_set){
-		S->size = Num;
-		return 1;
-	}
-	else{
-		fprintf(stderr, "Queue init failed\n");
-		return 0;
-	}
-}
-
-int findPrefix(prefix_set *S, unsigned long ip, int slash){
+void init_ps(Prefix_set *set){
+	memset(set->pfx_set, 0, sizeof(simple_prefix) * MAX_PFX_NUM);
 	int i;
-	for (i = 0;i < S->count;++i){
-		if (S->ip_set[i] == ip && S->slash_set[i] == slash){
-			return i;
-		}
+	for (i = 0;i < MAX_MONITOR_PATH_NUM;++i){
+		set->covered_path_set[i].nodes = NULL;
 	}
-	return -1;
-}
-
-int newPrefix(prefix_set *S, unsigned long ip, int slash){
-	if (S->count == S->size){
-		printf("Set if full!\n");
-		return -1;
-	}
-	S->ip_set[S->count] = ip;
-	S->slash_set[S->count] = slash;
-	S->statistic[S->count] = 1;
-	S->count += 1;
-	return S->count - 1;
-}
-
-int showSet(prefix_set *S){
-	int i, slash;
-	unsigned long ip;
-	for (i=0;i < S->count;++i){
-		ip = S->ip_set[i];
-		slash = S->slash_set[i];
-		printf("%d %lu.%lu.%lu.%lu/%d: %d\n", i, (ip & 0xff000000) >> 24, (ip & 0x00ff0000) >> 16, (ip & 0x0000ff00) >> 8, ip & 0x000000ff, 32 - slash, S->statistic[i]);
-	}
-	return 0;
-}
-
-int set2file(prefix_set *S, int threshold){
-	FILE *fp = fopen("prefix.txt","w");
-	int i, slash, count;
-	unsigned long ip;
-	count = 0;
-	for (i=0;i < S->count;++i){
-		if (S->statistic[i] < threshold)
-			continue;
-		ip = S->ip_set[i];
-		slash = S->slash_set[i];
-		fprintf(fp, "%lu.%lu.%lu.%lu/%d\n", (ip & 0xff000000) >> 24, (ip & 0x00ff0000) >> 16, (ip & 0x0000ff00) >> 8, ip & 0x000000ff, slash);
-		count += 1;
-	}
-	printf("Wrote: %d\n", count);
-	return 0;
-}
-
-void set_statistics(prefix_set *S, int threshold){
-	int total, th_sum, i;
-	for (i=0,total=0,th_sum=0;i < S->count;++i){
-		total += S->statistic[i];
-		if (S->statistic[i] > threshold)
-			th_sum += S->statistic[i];
-	}
-	printf("Total packet number: %d. Active prefix packet number: %d.\n", total, th_sum);
+	memset(set->covered_path_count, 0, sizeof(int) * MAX_MONITOR_PATH_NUM);
+	set->count = 0;
 	return;
 }
 
-int setfree(prefix_set *S){
-	free(S->statistic);
-	free(S->ip_set);
-	free(S->slash_set);
-	S->count = 0;
-	S->size = 0;
-	return 1;
+void free_ps(Prefix_set *set){
+	int i;
+	for (i=0;i < MAX_MONITOR_PATH_NUM;++i){
+		if (set->covered_path_set[i].nodes){
+			free(set->covered_path_set[i].nodes);
+			set->covered_path_set[i].nodes = NULL;
+		}
+	}
+	free(set);
 }
 
-int generateSet(prefix_set *S, int slash){
+int add_prefix(Prefix_set *set, char *pfx,  trie_node *rib_root){
+	//find pfx in rib, pfx_node.path
+	if (set->count == MAX_PFX_NUM){
+		printf("Add failed!\n");
+		return 0;
+	}
+	trie_node *pfx_node = trie_search(rib_root, prefix_01(pfx));
+	if (pfx_node == NULL){
+		return 2;
+	}
+	//find pfx-path in set, if in, compare the count to the threshold
+	int pos = search_path(set->covered_path_set, pfx_node->path);
+	if (pos == -1){
+		//new path. insert path
+		int key = insert_path(set->covered_path_set, pfx_node->path);
+		set->covered_path_count[key] = 1;
+		set->pfx_set[set->count].ip = pfx_ip(pfx);
+		set->pfx_set[set->count].slash = pfx_slash(pfx);
+		set->count += 1;
+		return 1;
+	}
+	else{
+		//compare 
+		if (set->covered_path_count[pos] > PATH_THRESHOLD)
+			return 0;
+		else{
+			//add prefix, count++
+			set->covered_path_count[pos] += 1;
+			set->pfx_set[set->count].ip = pfx_ip(pfx);
+			set->pfx_set[set->count].slash = pfx_slash(pfx);
+			set->count += 1;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+void pcap_to_raw_set(){
+	trie_node *rib_root = load_rib();
+	simple_prefix sp_set[MAX_PFX_NUM];
+	int statistic[MAX_PFX_NUM];
+	memset(statistic, 0, sizeof(int) * MAX_PFX_NUM);
+	int pfx_count = 0;
+
 	pcap_file_header pfh;
 	pcap_header ph;
-	int count = 0;
 	void *buff = NULL;
 	int readSize = 0;
-	int ret = 0;
 
 	char *filename;
 	filename = (void *)malloc(100);
@@ -101,86 +80,201 @@ int generateSet(prefix_set *S, int slash){
 	FILE *fp = fopen(filename, "r");
 	if (fp ==NULL){
 		fprintf(stderr, "Open file %s error.\n", filename);
-		ret = ERROR_FILE_OPEN_FAILED;
 		goto ERROR;
 	}
 
-	time_t start, end;
-	start = time(NULL);
-
 	fread(&pfh, sizeof(pcap_file_header), 1, fp);
-	// prinfPcapFileHeader(&pfh);
+	buff = (void *)malloc(1514);
 
-	buff = (void *)malloc(MAX_ETH_FRAME);
-
-	int tcp_count = 0;
-	int ret_count = 0;
-	int prt = -1;
-	for (count=1;;++count){
-		// break;
-		memset(buff,0,MAX_ETH_FRAME);
-		//read pcap header to get a packet
-		readSize = fread(&ph, sizeof(pcap_header),1,fp);
+	int packet_count = 0;
+	for (;!feof(fp);){
+		memset(buff,0,1514);
+		readSize = fread(&ph, sizeof(pcap_header), 1, fp);
 		if (readSize <= 0) break;
-		// printfPcapHeader(&ph);
-
-		/*print the first timestamp*/
-		// if (count == 1 || count == 16829835){
-		// 	printfPcapHeader(&ph);
-		// }
-
-		if (buff == NULL){
-			fprintf(stderr, "malloc memory faild.\n");
-			ret = ERROR_MEM_ALLOC_FAILED;
-			goto ERROR;
-		}
-
-		//get a packet data frame
 		readSize = fread(buff, 1, ph.capture_len, fp);
 		if (readSize != ph.capture_len){
-			free(buff);
 			fprintf(stderr, "pcap file parse error.\n");
-			ret = ERROR_PCAP_PARSE_FAILED;
 			goto ERROR;
 		}
-
 		ip_header *ih;
 		ih = (void *)malloc(20);
-		memcpy(ih, buff, 20);
-		if (ih->ver_hlen != 0x45){//packet with ethernet header
-			memcpy(ih, buff + ETH_LENGTH, 20);
+		memcpy(ih,buff,20);
+		if (ih->ver_hlen != 0x45){
+			memcpy(ih, buff + 14, 20);
 		}
 		unsigned long ip;
 		int pos;
-		ip = ntohl(ih->dst_ip) >> (32 - slash) << (32 - slash);
-		pos = findPrefix(S, ip, slash);
-		if (pos != -1){//found
-			S->statistic[pos] += 1;
+		ip = ntohl(ih->dst_ip);
+		trie_node *prefix = trie_search(rib_root, ip_key_l(ip));
+		if (prefix){
+			int slash = slash_key(prefix->pfx_key);
+			unsigned int ip_i = ip & slash_to_mask(slash);
+			int i, found = 0;
+			for (i = 0;i < pfx_count;++i){
+				if (sp_set[i].ip == ip_i && sp_set[i].slash == slash){
+					statistic[i]++;
+					found = 1;
+					// printf("Search_depth: %d\n", i);
+					
+					break;
+				}
+			}
+			if (found == 0){
+				// printf("Prefix count: %d Packet count: %d\n", pfx_count, packet_count);
+				printf("New prefix NO.%d %u.%u.%u.%u/%d\n", pfx_count,
+					ip_i >> 24, (ip_i >> 16) & 0xff, 
+					(ip_i >> 8) & 0xff,
+					ip_i & 0xff,
+					slash);
+				sp_set[pfx_count].ip = ip_i;
+				sp_set[pfx_count].slash = slash;
+				statistic[pfx_count] = 1;
+				pfx_count++;
+			}
+			else{
+				// printf("Found %lu.%lu.%lu.%lu/%d\n", ip >> 24, (ip >> 16) & 0xff, 
+				// 	(ip >> 8) & 0xff,
+				// 	ip & 0xff,
+				// 	slash);
+			}
 		}
-		else{//new prefix
-			newPrefix(S, ip, slash);
-		}
-		// printf("===count:%d,readSize:%d===\n",count,readSize);
-		if (feof(fp) || readSize <= 0) 
-			break;
+		packet_count++;
 	}
 
 ERROR:
 	if (buff){
 		free(buff);
-		buff=NULL;
 	}
-	if (fp){
-		fclose(fp);
-		fp =NULL;
+	if (filename){
+		free(filename);
 	}
+	int i;
+	FILE *fout = fopen("./trace_caida/prefix_raw.txt","w");
+	for (i = 0;i < pfx_count;++i){
+		fprintf(fout, "%u.", sp_set[i].ip >> 24);
+		fprintf(fout, "%u.", (sp_set[i].ip >> 16) & 0xff);
+		fprintf(fout, "%u.", (sp_set[i].ip >> 8) & 0xff);
+		fprintf(fout, "%u/", sp_set[i].ip & 0xff);
+		fprintf(fout, "%d\n", sp_set[i].slash);
+	}
+	fclose(fout);
+	fclose(fp);
+	freeTrie(rib_root);
+}
 
-	// showSet(S);
-	set2file(S, 0);
-	// set_statistics(S, 50);
-	setfree(S);
+void generate_set(){
+	trie_node *rib_root = load_rib();
 
-	end = time(NULL);
-	printf("The total time spent:%ld\n", end - start);
-	return ret;
+	Prefix_set *pfx_set = (void *)malloc(sizeof(Prefix_set));
+	init_ps(pfx_set);
+
+	FILE *fp = fopen("./trace_caida/prefix_24.txt","r");
+	char buff[256], tmpbuff[256];
+	memset(buff, 0, 256);
+	memset(tmpbuff, 0, 256);
+
+	FILE *fout = fopen("./trace_caida/prefix_trial_1.txt","w");
+	int count = 0, i, j, maxx, f_c = 0, rib_not_found = 0;
+	for (;!feof(fp);){
+		fgets(buff, 256, fp);
+		strcpy(tmpbuff, buff);
+		buff[strlen(buff) - 1] = 0;
+		int a = add_prefix(pfx_set, buff, rib_root);
+		if (a == 1){
+			count++;
+			fprintf(fout, "%s", tmpbuff);
+		}
+		else if (a == 0){
+			f_c++;
+			// printf("%s", tmpbuff);
+		}
+		else{
+			rib_not_found++;
+		}
+	}
+	// for (i = 0, maxx = 0;i < MAX_MONITOR_PATH_NUM;++i){
+	// 	if (pfx_set->covered_path_count[i] == 0)
+	// 		continue;
+	// 	else{
+	// 		printf("Path:");
+	// 		for (j=0;j<15;++j){
+	// 			if (pfx_set->covered_path_set[i].nodes[j] == 0)
+	// 				break;
+	// 			printf(" %d", pfx_set->covered_path_set[i].nodes[j]);
+	// 		}
+	// 		printf(" Count: %d\n", pfx_set->covered_path_count[i]);
+	// 		if (pfx_set->covered_path_count[i] > maxx)
+	// 			maxx = pfx_set->covered_path_count[i];
+	// 	}
+	// }
+	printf("Abandon count: %d\n", f_c);
+	printf("Rib not found count: %d\n", rib_not_found);
+	printf("Set count: %d\n", pfx_set->count);
+	printf("Most_pfx_count Path: %d\n", maxx);
+	fclose(fout);
+	fclose(fp);
+	free_ps(pfx_set);
+	printf("Total wrote: %d prefixes.\n", count);
+	return;
+}
+
+int insert_path(as_path *asp_set, as_path path){
+	int key = path_hash(path);
+	while(asp_set[key].nodes != NULL){
+		key = (key + 1) % MAX_MONITOR_PATH_NUM;
+	}
+	asp_set[key].nodes = (int *)malloc(sizeof(int) * 15);
+	memcpy(asp_set[key].nodes, path.nodes, sizeof(int) * 15);
+	return key;
+}
+
+int search_path(as_path *asp_set, as_path path){
+	int key = path_hash(path);
+	int tmp = (key - 1) % MAX_MONITOR_PATH_NUM;
+	while (asp_set[key].nodes != NULL){
+		if (memcmp(asp_set[key].nodes, path.nodes, sizeof(int) * 15) == 0){
+			return key;
+		}
+		if (key == tmp){
+			break;
+		}
+		key = (key + 1) % MAX_MONITOR_PATH_NUM;
+	}
+	return -1;
+}
+
+int pfx_ip(char *pfx){
+	int i;
+	for (i=0;i < strlen(pfx);++i){
+		if (pfx[i] == '/') break;
+	}
+	i = i - 1;
+	char *tmp = (void *)malloc(i+1);
+	memset(tmp, 0, i+1);
+	memcpy(tmp, pfx, i);
+	int ip = ntohl(inet_addr(tmp));
+	free(tmp);
+	return ip;
+}
+
+int pfx_slash(char *pfx){
+	int i, slash = 0;
+	for (i=0;i < strlen(pfx);++i){
+		if (pfx[i] == '/') break;
+	}
+	i = i + 1;
+	for (;i < strlen(pfx);++i)
+		slash = slash * 10 + (pfx[i] - '0');
+	return slash;
+}
+
+int path_hash(as_path asp){
+	int key = 0, i;
+	for (i = 0;i < 15;++i){
+		if (asp.nodes[i])
+			key = (key + asp.nodes[i]) % MAX_MONITOR_PATH_NUM;
+		else
+			break;
+	}
+	return key;
 }

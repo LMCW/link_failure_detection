@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include "hash_table.h"
-#include "rtt.h"
+#include "trie.h"
 
 typedef unsigned int bpf_u_int32;
 typedef unsigned short u_short;
@@ -59,11 +59,6 @@ len: the real length of the data, often, len equals to caplen
 packet data:data zone
 */
 
-typedef struct timestamp{
-	bpf_u_int32 timestamp_s;
-	bpf_u_int32 timestamp_ms;	
-}timestamp;
-
 typedef struct pcap_header{
 	timestamp ts;
 	bpf_u_int32 capture_len;
@@ -113,6 +108,7 @@ typedef struct prefix{
 	  current_bin_start_time += shift * BIN_TIME
 	*/
 	int curr_sw_pos;
+	int threshold;
 	timestamp current_bin_start_time;
 	hash_table *ht;
 }prefix;
@@ -135,5 +131,6 @@ unsigned long get_dst_ip(void *data);
 
 int pfx_cmp(const void *a, const void *b);
 void update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp);
+void threshold_set(prefix *pfx, timestamp *timer);
 
 #endif
