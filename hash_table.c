@@ -3,6 +3,9 @@
 int hash_table_init(hash_table *h){
 	h->count = 0;
 	h->size = HASH_TABLE_INIT_SIZE;
+	// if (slash <= 12)
+	// 	h->size = HASH_TABLE_LARGE_SIZE;
+	// h->table = (flow *)malloc(sizeof(flow) * h->size);
 	memset(h->table, 0, sizeof(flow) * h->size);
 	int i;
 	for (i=0;i < h->size;++i)

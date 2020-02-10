@@ -56,29 +56,37 @@ int flow_match(bpf_u_int32 src, bpf_u_int32 dst, bpf_u_int32 src_p, bpf_u_int32 
 
 prefix *pfx_set_from_file(int size){
 	prefix *set = (prefix *)malloc(sizeof(prefix)*size);
-	memset(set,0,sizeof(prefix)*size);
 	char *filename = (void *)malloc(256);
 	printf("Prefix filename: ");
 	scanf("%s",filename);
 	FILE *fp = fopen(filename, "r");
-	char *buff = (void *)malloc(1000);
-	memset(buff,0,1000);
+	char *buff = (void *)malloc(100);
+	memset(buff,0,100);
+	char tmp[20];
+	memset(tmp,0,20);
 
 	int i;
-	for (i=0;i < size;++i){
+	for (i=0;i < size && !feof(fp);++i){
 		//initialization of each prefix
-		if (feof(fp)) break;
-		fgets(buff, 1000, fp);
+		fgets(buff, 100, fp);
+		// printf("%s", buff);
 		int j = 0, len;
 		len = strlen(buff);
+		// printf("HAHA %d\n", len);
 		for (;j < len;++j)
 			if (buff[j]=='/') break;
-		buff[j]=0;
-		set[i].ip = ntohl(inet_addr(buff));
+
+		buff[j] = 0;
+		strcpy(tmp, buff);
+		// printf("%s ", tmp);
+		set[i].ip = ntohl(inet_addr(tmp));
 		set[i].slash = 0;
-		for (j=j+1;j < len - 1; ++j){
+		for (j=j+1;; ++j){
+			if (buff[j] > '9' || buff[j] < '0')
+				break;
 			set[i].slash = set[i].slash * 10 + (buff[j]-'0');
-		}		
+		}
+		// printf("%d\n", set[i].slash);
 		set[i].sliding_window = (int *)malloc(sizeof(int) * BIN_NUM);
 		memset(set[i].sliding_window, 0, sizeof(int) * BIN_NUM);
 		set[i].curr_sw_pos = 0;
@@ -175,7 +183,7 @@ void monitor(){
 	}
 
 	//prefix set definition or from file
-	int set_size = 4256;
+	int set_size = 1829;
 	// printf("How many prefixes to monitor?");
 	// scanf("%d", &set_size);
 	if (set_size <= 0)
@@ -313,9 +321,11 @@ void monitor(){
 					timestamp rtt_sample = ts_minus(ph.ts, pfx_set[pfx_index].ht->table[pos].last_ts);
 					//if the sample is greater than some threshold, abandon this sample
 					int ms_sample = rtt_sample.timestamp_s * 1000000 + rtt_sample.timestamp_ms;
-					if (ms_sample <= 5000000){
+					if (ms_sample <= 2000000){
 						//flow smooth rtt update
 						rtt_update(&(pfx_set[pfx_index].ht->table[pos].rd), ms_sample);
+						// if (pfx_index == 16)
+							// printf("%d\n", ms_sample);
 						// threshold_set(&(pfx_set[pfx_index]), &(timer_set[pfx_index]));
 					}
 				}
@@ -330,6 +340,18 @@ void monitor(){
 
 	//Memory free and summary
 ERROR:
+	end = time(NULL);
+
+	// char *line = (char *)malloc(256);
+	// printf("End Analyze.\n");
+	// while (1){	
+	// 	memset(line, 0, 256);
+	// 	scanf("%s", line);
+	// 	if (strcmp(line, "exit") == 0){
+	// 		free(line);
+	// 		break;
+	// 	}
+	// }
 	if (buff){
 		free(buff);
 		buff=NULL;
@@ -370,7 +392,7 @@ ERROR:
 	printf("Total tcp count: %d\n", tcp_count);
 	printf("Total monitored packet count: %d\n", total_count);
 	printf("Total packet count: %d\n", count);
-	end = time(NULL);
+	
 	printf("The total time spent:%ld\n", end - start);
 
 	return;

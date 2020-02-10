@@ -115,7 +115,7 @@ void pcap_to_raw_set(){
 					statistic[i]++;
 					found = 1;
 					// printf("Search_depth: %d\n", i);
-					
+
 					break;
 				}
 			}
@@ -149,7 +149,7 @@ ERROR:
 		free(filename);
 	}
 	int i;
-	FILE *fout = fopen("./trace_caida/prefix_raw.txt","w");
+	FILE *fout = fopen("./trace_caida/prefix_raw_2015.txt","w");
 	for (i = 0;i < pfx_count;++i){
 		fprintf(fout, "%u.", sp_set[i].ip >> 24);
 		fprintf(fout, "%u.", (sp_set[i].ip >> 16) & 0xff);

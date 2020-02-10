@@ -5,8 +5,10 @@
 #include "string.h"
 #include "stdlib.h"
 #include "stdio.h"
-#define HASH_TABLE_INIT_SIZE 29989
+// #define HASH_TABLE_INIT_SIZE 29989
 // #define HASH_TABLE_INIT_SIZE 9973
+#define HASH_TABLE_INIT_SIZE 99991
+// #define HASH_TABLE_LARGE_SIZE 99991
 
 typedef struct timestamp{
 	unsigned int timestamp_s;
@@ -24,6 +26,8 @@ typedef struct flow{
 	timestamp last_ts;
 	rtt_distribution rd;
 }flow;
+
+//TODO: Change the data structure of hashtable
 
 typedef struct hash_table{
 	int count;
