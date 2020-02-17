@@ -60,7 +60,82 @@ static inline int hash(unsigned int src_ip,
 	// 	printf("Abnormal size %d\n", size);
 	// 	return -1;
 	// }
-	int p = HASH_TABLE_INIT_SIZE;
+	int p = size;
 	int key = ((src_ip % p) + (dst_ip % p) + (src_port % p) + (dst_port % p)) % p;
 	return key;
 }
+
+void _hash_init(_hash_table *ht){
+	ht->size = _HASH_TABLE_INIT_SIZE;
+	ht->elem_num = 0;
+	// ht->buckets = (Bucket **)malloc(ht->size * sizeof(Bucket *));
+	int i;
+	for (i = 0;i < _HASH_TABLE_INIT_SIZE;++i){
+		ht->buckets[i] = NULL;
+	}
+	return;
+}
+
+int _insert_hash_table(_hash_table *ht, _flow *f){
+	int index = _hash(f);
+	Bucket *s_bucket = ht->buckets[index];
+	Bucket *tmp = s_bucket;
+	while (tmp){
+		if (flow_equal(tmp->f, f)){
+			printf("Already exist!\n");
+			return EXIST;
+		}
+		tmp = tmp->next;
+	}
+	Bucket *bkt = (Bucket *)malloc(sizeof(Bucket));
+	bkt->f = f;
+	bkt->next = NULL;
+	ht->elem_num += 1;
+
+	if (s_bucket != NULL)
+		bkt->next = s_bucket;
+	ht->buckets[index] = bkt;
+	// printf("Insert Success.\n");
+	return INSERT_SUCC;
+}
+
+Bucket* _search_hash_table(_hash_table *ht, _flow *f){
+	int index = _hash(f);
+	Bucket *bkt = ht->buckets[index];
+	while (bkt){
+		if (flow_equal(bkt->f, f)){
+			// printf("Flow found.\n");
+			return bkt;
+		}
+		bkt = bkt->next;
+	}
+	return NULL;
+}
+
+int _hash(_flow *f){
+	//hash algorithm 1
+	return hash(f->src_ip, f->dst_ip, f->src_port, f->dst_port, _HASH_TABLE_INIT_SIZE);
+
+	//TODO: hash algorithm 2
+
+}
+
+int flow_equal(_flow *a, _flow *b){
+	if (a->src_ip == b->src_ip &&
+		a->dst_ip == b->dst_ip &&
+		a->src_port == b->src_port &&
+		a->dst_port == b->dst_port){
+		return 1;
+	}
+	return 0;
+}
+
+
+
+
+
+
+
+
+
+

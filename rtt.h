@@ -12,6 +12,8 @@ typedef struct rtt_distribution{
 	int rto;
 }rtt_distribution;
 
+
+
 static inline int max(int a, int b);
 static inline void rtt_init(rtt_distribution *rd, int first_sample);
 void rtt_update(rtt_distribution *rd, int sample);

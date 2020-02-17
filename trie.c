@@ -15,13 +15,14 @@ int binarysearch(int *arr, int target, int count){
 
 as_rel *load_asr(){
 	char buff[1000];
-	char filename[256];
+	// char filename[256];
+	char *filename = "/Users/chenzp/Documents/Research/link_failure_detection/as-rel/20130501.as-rel.txt";
 	FILE *fd;
 
 	memset(buff,0,1000);
-	memset(filename,0,256);
-	printf("Plz input the filename of as relationship: ");
-	scanf("%s",filename);
+	// memset(filename,0,256);
+	// printf("Plz input the filename of as relationship: ");
+	// scanf("%s",filename);
 	fd = fopen(filename,"r");
 
 	as_rel *asr = (as_rel *)malloc(sizeof(as_rel));
@@ -173,7 +174,7 @@ void freeTrie(trie_node *location){
 	for (i=0;i<DICTIONARY_SIZE;++i)
 		if (location->children[i])
 			freeTrie(location->children[i]);
-	free(location->path.nodes);
+	// free(location->path.nodes);
 	free(location);
 }
 
@@ -276,13 +277,14 @@ trie_node* load_rib(){
 
 	trie_node *root = create_trie_node();
 	char buff[1000];
-	char filename[256];
+	// char filename[256];
+	char *filename = "/Users/chenzp/Documents/Research/link_failure_detection/ribs/2015/dedup_sreqix_201502191200.txt";
 	FILE *fd;
 
 	memset(buff,0,1000);
-	memset(filename,0,256);
-	printf("Plz input the filename of rib: ");
-	scanf("%s",filename);
+	// memset(filename,0,256);
+	// printf("Plz input the filename of rib: ");
+	// scanf("%s",filename);
 	fd = fopen(filename,"r");
 
 
