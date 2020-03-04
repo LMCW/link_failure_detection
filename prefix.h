@@ -1,49 +1,36 @@
 #ifndef prefix_h
 #define prefix_h
 
-#include "trie.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <time.h>
+#include "hash_table.h"
+#include "fifo_queue.h"
+#include "timestamp.h"
+#include "stdio.h"
 
-#define MAX_PFX_NUM 500000
-#define MAX_MONITOR_PATH_NUM 199999 //TODO: determine the exact number according to the rib file
-#define PATH_THRESHOLD 100
+#define BIN_NUM 10
+#define BIN_TIME 0.08
+#define BASIC_THRESHOLD 10
 
-typedef struct simple_prefix{
-	unsigned int ip;
+typedef struct prefix{
+	unsigned long ip;
 	int slash;
-}simple_prefix;
+	
+	// int threshold;
+	float thresh_p;
+	
+	//TODO: Sliding window definition
+	int *sliding_window;
+	int curr_sw_pos;
+	timestamp current_bin_start_time;
 
-typedef struct Prefix_set{
-	simple_prefix pfx_set[MAX_PFX_NUM];
-	as_path covered_path_set[MAX_MONITOR_PATH_NUM]; //hash table to store as paths
-	int covered_path_count[MAX_MONITOR_PATH_NUM];
-	int count;
-}Prefix_set;
+	hash_table *ht;
 
-void init_ps(Prefix_set *set);//Initialization of the prefix set
+}prefix;
 
-void free_ps(Prefix_set *set);//free memory of the prefix set
+int pfx_file_size(char const *filename);
+prefix *pfx_set_from_file(char const *filename, int set_size);
+int ip_pfx_match(unsigned long ip, prefix pfx);
+int binary_search_ip(unsigned long ip, prefix *pfx_set, int set_size);
+int pfx_cmp(const void *a, const void *b);
 
-int add_prefix(Prefix_set *set, char *pfx, trie_node *rib_root); /* if a path to the prefix is new to the set, 
-																			* add the prefix to the set.
-																			* A path is new means path occurrence count 
-																			* is no more some threshold. 
-																			*/
-
-void generate_set();
-
-void pcap_to_raw_set();
-
-int pfx_ip(char *pfx);
-
-int pfx_slash(char *pfx);
-
-int insert_path(as_path *asp_set, as_path path);
-
-int search_path(as_path *asp_set, as_path path);
-
-int path_hash(as_path asp); //hash function
+float update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp);
 #endif

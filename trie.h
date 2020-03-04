@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 
+#define AS_REL_SET_NUM 150000
 #define DICTIONARY_SIZE 2
 
 typedef struct as_path{
@@ -21,14 +22,14 @@ typedef struct trie_node{
 }trie_node;
 
 typedef struct as_rel{
-	int a[150000];
-	int b[150000];
-	short rel[150000];
+	int a[AS_REL_SET_NUM];
+	int b[AS_REL_SET_NUM];
+	short rel[AS_REL_SET_NUM];
 	int count;
 }as_rel;
 
 int binarysearch(int *arr, int target, int count);
-as_rel *load_asr();
+as_rel *load_asr(char const *filename);
 int path_cmp(as_path path1, as_path path2, int local_as, int mode, as_rel *asr);
 trie_node *create_trie_node();
 void trie_insert(trie_node *root, char* key, as_path *path, as_rel *asr);
@@ -42,7 +43,7 @@ int slash_key(char *key);
 char *prefix_01(char *prefix);
 char *prefix_slash(char *prefix);
 int isIPv4(char *prefix);
-trie_node* load_rib();
+trie_node* load_rib(char const *as_rel_file, char const *rib_file);
 int *flow2path(unsigned long dst_ip, trie_node *root);
 int terminal_UI();
 

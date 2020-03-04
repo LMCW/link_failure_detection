@@ -1,19 +1,23 @@
 CFLAGS += -g
-objects = main.o trie.o hash_table.o rtt.o flow.o pcap.o measure.o prefix.o
+TARGET = pcaptest
+# INC = -I./include
+SRCS = main.c \
+	hash_table.c \
+	flow.c \
+	pcap.c \
+	prefix.c \
+	trie.c \
+	iat.c \
+	timestamp.c \
+	probability.c
+	
+OBJS = $(SRCS:.c=.o) 
 
-pcaptest : $(objects)
-	gcc $(CFLAGS) -o pcaptest $(objects)
+$(TARGET):$(OBJS)
+	gcc -o $@ $^
 
-main.o: main.c
-hash_table.o: hash_table.c
-rtt.o: rtt.c
-flow.o: flow.c
-pcap.o: pcap.c
-measure.o: measure.c
-prefix.o: prefix.c
-trie.o: trie.c
-
- 
-.PHONY : clean
 clean :
-	rm pcaptest  $(objects)
+	rm -rf $(TARGET) $(OBJS)
+
+%.o:%.c
+	gcc $(CFLAGS) -o $@ -c $<

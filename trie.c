@@ -1,4 +1,5 @@
 #include "trie.h"
+
 int binarysearch(int *arr, int target, int count){
 	int hi,lo,mid;
 	for (lo = 0, hi = count - 1;lo <= hi;){
@@ -13,10 +14,10 @@ int binarysearch(int *arr, int target, int count){
 	return -1;
 }
 
-as_rel *load_asr(){
+as_rel *load_asr(char const *filename){
 	char buff[1000];
 	// char filename[256];
-	char *filename = "/Users/chenzp/Documents/Research/link_failure_detection/as-rel/20130501.as-rel.txt";
+	// char *filename = "/Users/chenzp/Documents/Research/link_failure_detection/as-rel/20130501.as-rel.txt";
 	FILE *fd;
 
 	memset(buff,0,1000);
@@ -271,21 +272,21 @@ int isIPv4(char *prefix){
 	return 1;
 }
 
-trie_node* load_rib(){
+trie_node* load_rib(char const *as_rel_file, char const *rib_file){
 	as_rel *asr;
-	asr = load_asr();
+	asr = load_asr(as_rel_file);
 
 	trie_node *root = create_trie_node();
 	char buff[1000];
 	// char filename[256];
-	char *filename = "/Users/chenzp/Documents/Research/link_failure_detection/ribs/2015/dedup_sreqix_201502191200.txt";
+	// char *filename = "/Users/chenzp/Documents/Research/link_failure_detection/ribs/2015/dedup_sreqix_201502191200.txt";
 	FILE *fd;
 
 	memset(buff,0,1000);
 	// memset(filename,0,256);
 	// printf("Plz input the filename of rib: ");
 	// scanf("%s",filename);
-	fd = fopen(filename,"r");
+	fd = fopen(rib_file,"r");
 
 
 	if (!fd){
@@ -346,71 +347,71 @@ int *flow2path(unsigned long dst_ip, trie_node *root){
 
 
 int terminal_UI(){
-	trie_node *root;
-	root = load_rib();
+	// trie_node *root;
+	// root = load_rib();
 
-	char* command = (char *)malloc(sizeof(char)*1024);
-	memset(command,0,sizeof(char)*1024);
+	// char* command = (char *)malloc(sizeof(char)*1024);
+	// memset(command,0,sizeof(char)*1024);
 
-	while (1){
-		scanf("%s", command);
-		if (strcmp(command, "ip") == 0){
-			// printf("plz input the prefix u want to insert: ");
-			// char *prefix = (char *)malloc(sizeof(char)*50);
-			// scanf("%s",prefix);
-			// // cb_insert(root, prefix_01(prefix));
-			// trie_insert(root, prefix_01(prefix));
-			// free(prefix);
-			printf("plz input the prefix u want to find: ");
-			char *ip = (char *)malloc(sizeof(char)*30);
-			memset(ip, 0, 30);
-			scanf("%s", ip);
-			trie_node *p = trie_search(root, ip_key_c(ip));
-			if (p){
-				printf("Found! Path is");
-				int i;
-				for (i=0;i < 15;++i){
-					if (p->path.nodes[i] != 0)
-						printf(" %d",p->path.nodes[i]);
-					}
-				printf("\n");
-			}
-			else
-				printf("Not found\n");
-			free(ip);
+	// while (1){
+	// 	scanf("%s", command);
+	// 	if (strcmp(command, "ip") == 0){
+	// 		// printf("plz input the prefix u want to insert: ");
+	// 		// char *prefix = (char *)malloc(sizeof(char)*50);
+	// 		// scanf("%s",prefix);
+	// 		// // cb_insert(root, prefix_01(prefix));
+	// 		// trie_insert(root, prefix_01(prefix));
+	// 		// free(prefix);
+	// 		printf("plz input the prefix u want to find: ");
+	// 		char *ip = (char *)malloc(sizeof(char)*30);
+	// 		memset(ip, 0, 30);
+	// 		scanf("%s", ip);
+	// 		trie_node *p = trie_search(root, ip_key_c(ip));
+	// 		if (p){
+	// 			printf("Found! Path is");
+	// 			int i;
+	// 			for (i=0;i < 15;++i){
+	// 				if (p->path.nodes[i] != 0)
+	// 					printf(" %d",p->path.nodes[i]);
+	// 				}
+	// 			printf("\n");
+	// 		}
+	// 		else
+	// 			printf("Not found\n");
+	// 		free(ip);
 			
-		}
-		else if (strcmp(command, "f") == 0 || strcmp(command, "find") == 0){
-			printf("plz input the prefix u want to find: ");
-			char *prefix = (char *)malloc(sizeof(char)*50);
-			scanf("%s",prefix);
-			// if (cb_contain(root, prefix_01(prefix))) printf("Yes\n");
-			trie_node *p = trie_search(root, prefix_01(prefix));
-			if (p){
-				printf("Found! Path is");
-				int i;
-				for (i=0;i < 15;++i){
-					if (p->path.nodes[i] != 0)
-						printf(" %d",p->path.nodes[i]);
-					}
-				printf("\n");
-			}
-			else
-				printf("Not found\n");
-			free(prefix);
-		}
-		else if (strcmp(command, "exit") == 0){
-			printf("Byebye\n");
-			break;
-		}
-		else{
-			printf("Wrong order!\n");
-			continue;
-		}
-	}
+	// 	}
+	// 	else if (strcmp(command, "f") == 0 || strcmp(command, "find") == 0){
+	// 		printf("plz input the prefix u want to find: ");
+	// 		char *prefix = (char *)malloc(sizeof(char)*50);
+	// 		scanf("%s",prefix);
+	// 		// if (cb_contain(root, prefix_01(prefix))) printf("Yes\n");
+	// 		trie_node *p = trie_search(root, prefix_01(prefix));
+	// 		if (p){
+	// 			printf("Found! Path is");
+	// 			int i;
+	// 			for (i=0;i < 15;++i){
+	// 				if (p->path.nodes[i] != 0)
+	// 					printf(" %d",p->path.nodes[i]);
+	// 				}
+	// 			printf("\n");
+	// 		}
+	// 		else
+	// 			printf("Not found\n");
+	// 		free(prefix);
+	// 	}
+	// 	else if (strcmp(command, "exit") == 0){
+	// 		printf("Byebye\n");
+	// 		break;
+	// 	}
+	// 	else{
+	// 		printf("Wrong order!\n");
+	// 		continue;
+	// 	}
+	// }
 
-	free(command);
+	// free(command);
 
-	freeTrie(root);
+	// freeTrie(root);
 	return 0;
 }
