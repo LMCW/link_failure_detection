@@ -103,8 +103,8 @@ int pfx_cmp(const void *a, const void *b){
 float update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 	float ret = 0;
 	timestamp active_threshold;
-	active_threshold.timestamp_s = 0;
-	active_threshold.timestamp_ms = 500000;
+	active_threshold.timestamp_s = 2;
+	active_threshold.timestamp_ms = 0;
 	timestamp diff = ts_minus(packet_time, pfx->current_bin_start_time);
 	int sw_sum = 0,p;
 	for (p = 0;p < BIN_NUM;++p)
@@ -126,13 +126,16 @@ float update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 						timestamp tmp_ts;
 						tmp_ts.timestamp_s = pfx->current_bin_start_time.timestamp_s + ((pfx->current_bin_start_time.timestamp_ms+j*bin.timestamp_ms)/1000000);
 						tmp_ts.timestamp_ms = (pfx->current_bin_start_time.timestamp_ms + j*bin.timestamp_ms)%1000000;
-						timestamp time_diff = ts_minus(tmp_ts, tmp->f->last_ts);
 						if (ts_cmp(tmp_ts, tmp->f->last_ts) < 0){
 							// printf("%u.%u  %u.%u\n", tmp_ts.timestamp_s, tmp_ts.timestamp_ms, tmp->f->last_ts.timestamp_s, tmp->f->last_ts.timestamp_ms);
 							afc += 1;
 						}
-						else if (ts_cmp(time_diff, active_threshold) < 0){
-							afc += 1;
+						else {
+							timestamp time_diff = ts_minus(tmp_ts, tmp->f->last_ts);
+							// printf("%u.%u\n", time_diff.timestamp_s, time_diff.timestamp_ms);
+							if (ts_cmp(time_diff, active_threshold) < 0){
+								afc += 1;
+							}
 						}
 						// if (tmp->f->is_active){
 						// 	afc += 1;
@@ -140,6 +143,17 @@ float update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 						tmp = tmp->next;
 					}
 				}
+				// printf("SW_INFO|\t%lu.%lu.%lu.%lu/%d\t%u.%06u\t%d\t%d\n", 
+				// 	pfx->ip >> 24,
+				// 	(pfx->ip >> 16) & 0xff,
+				// 	(pfx->ip >> 8) & 0xff,
+				// 	pfx->ip & 0xff,
+				// 	pfx->slash,
+				// 	pfx->current_bin_start_time.timestamp_s + ((pfx->current_bin_start_time.timestamp_ms+j*bin.timestamp_ms)/1000000),
+				// 	(pfx->current_bin_start_time.timestamp_ms + j*bin.timestamp_ms)%1000000,
+				// 	sw_sum,
+				// 	// pfx->ht->elem_num);
+				// 	afc);
 				fprintf(fp, "SW_INFO|\t%lu.%lu.%lu.%lu/%d\t%u.%06u\t%d\t%d\n", 
 					pfx->ip >> 24,
 					(pfx->ip >> 16) & 0xff,
@@ -147,7 +161,7 @@ float update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 					pfx->ip & 0xff,
 					pfx->slash,
 					pfx->current_bin_start_time.timestamp_s + ((pfx->current_bin_start_time.timestamp_ms+j*bin.timestamp_ms)/1000000),
-					(pfx->current_bin_start_time.timestamp_ms + j*bin.timestamp_ms)%1000000,
+					(pfx->current_bin_start_time.timestamp_ms + j*bin.timestamp_ms) % 1000000,
 					sw_sum,
 					// pfx->ht->elem_num);
 					afc);

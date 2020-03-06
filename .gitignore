@@ -1,4 +1,12 @@
 # Prerequisites
+as-rel/
+log/
+prefix/
+ribs/
+rtt/
+suspect/
+trace_caida/
+trace_simulation/
 .DS_Store
 *.pcap
 *.txt

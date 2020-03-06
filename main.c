@@ -7,6 +7,7 @@
 #include "string.h"
 #include "stdlib.h"
 #include "probability.h"
+#include "simple_prefix.h"
 
 void int2filename(int i, char *filename){
 	strcpy(filename, "./rtt/");
@@ -31,6 +32,9 @@ int main(int argc, char const *argv[])
 		printf("Usage: pcaptest [as_rel] [rib] [prefix] [pcap]\n");
 		return 1;
 	}
+
+	//generate prefix file from pcap file
+	pcap_to_raw_set(argv[4], argv[1], argv[2], argv[3]);
 	//load rib
 	trie_node *rib_root = load_rib(argv[1], argv[2]);
 
@@ -44,9 +48,19 @@ int main(int argc, char const *argv[])
 	//open rtt file
 	FILE *frtt = fopen("./rtt_sample.txt","w");
 
-	FILE *log_fp = fopen("log.txt","w");
+	char log_file_name[100];
+	memset(log_file_name, 0, 100);
+	char const* log_f = "./log/2013/log_";//15
+	strcpy(log_file_name, log_f);
+	memcpy(log_file_name + 15, argv[4] + 44, 11);
+	FILE *log_fp = fopen(log_file_name,"w");
 
-	FILE *suspect = fopen("suspect_path.txt","w");
+	char suspect_file_name[100];
+	memset(suspect_file_name, 0, 100);
+	char const *suspect_f = "./suspect/2013/suspect_";//23
+	strcpy(suspect_file_name, suspect_f);
+	memcpy(suspect_file_name + 23, argv[4] + 44, 11);
+	FILE *suspect = fopen(suspect_file_name,"w");
 
 	//pcap analyze
 	int count, eth, flag = 0;
@@ -61,6 +75,10 @@ int main(int argc, char const *argv[])
 	timestamp bin;
 	bin.timestamp_s = 0;
 	bin.timestamp_ms = 80000;
+
+	timestamp window;
+	window.timestamp_s = 0;
+	window.timestamp_ms = 800000;
 
 	// timestamp active_threshold;
 	// active_threshold.timestamp_s = 0;
@@ -127,7 +145,11 @@ int main(int argc, char const *argv[])
 					//location
 					int x;
 					fprintf(suspect, "%u.%u\t", ph.ts.timestamp_s, ph.ts.timestamp_ms);
-					fprintf(suspect,"");
+					fprintf(suspect, "%lu.%lu.%lu.%lu/%d\t", pfx_set[pfx_index].ip >> 24,
+						(pfx_set[pfx_index].ip >> 16) & 0xff,
+						(pfx_set[pfx_index].ip >> 8) & 0xff,
+						pfx_set[pfx_index].ip & 0xff,
+						pfx_set[pfx_index].slash);
 					for (x = 0;x < 15;++x){
 						if (tmp_node->path.nodes[x] != 0)
 							fprintf(suspect,"%d ", tmp_node->path.nodes[x]);
@@ -144,11 +166,26 @@ int main(int argc, char const *argv[])
 					pkt_data > 0){//retransimission
 					// printf("Time: %u.%u\n", ph.ts.timestamp_s, ph.ts.timestamp_ms);
 					if (ph.ts.timestamp_s - start_ts.timestamp_s >= 30){
-						int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
-						pfx_set[pfx_index].sliding_window[last_bin] += 1;
+						timestamp rt_diff = ts_minus(ph.ts, bkt->f->last_rt_time);
+						if (bkt->f->retransmission == 0 && (ts_cmp(rt_diff, window) >= 0)){
+							int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
+							pfx_set[pfx_index].sliding_window[last_bin] += 1;
+							bkt->f->retransmission = 1;
+						}
+						// if (pfx_set[pfx_index].ip == 839581696){
+						// 	printf("Dst ip: %lu.%lu.%lu.%lu Time: %u.%u\n", dst_ip >> 24,
+						// 		(dst_ip >> 16) & 0xff,
+						// 		(dst_ip >> 8) & 0xff, 
+						// 		dst_ip & 0xff, 
+						// 		ph.ts.timestamp_s, 
+						// 		ph.ts.timestamp_ms);
+						// }
 					}
+					bkt->f->last_rt_time.timestamp_s = ph.ts.timestamp_s;
+					bkt->f->last_rt_time.timestamp_ms = ph.ts.timestamp_ms;
 				}
 				else{
+					bkt->f->retransmission = 0;
 					if (ph.ts.timestamp_s - start_ts.timestamp_s < 30){
 					//rtt measure and threshold calculation at first
 						unsigned int rtt = flight_update(bkt->f, tmp_f->last_ts);
@@ -173,7 +210,7 @@ int main(int argc, char const *argv[])
 							if (frtt){
 								fclose(frtt);
 							}
-							// system("python ./flow_stats.py");
+							system("python ./flow_stats.py");
 				
 							flag = 1;
 							printf("Calculating Thresholds.\n");

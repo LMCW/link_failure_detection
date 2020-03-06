@@ -17,7 +17,8 @@ typedef struct flow{
 	unsigned int expect_seq;	
 	//retransmission detection
 
-	int is_active;
+	int retransmission;//0 or 1
+	timestamp last_rt_time;
 	//TODO: flow active judgement
 
 	iat_queue iq;
