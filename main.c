@@ -9,6 +9,15 @@
 #include "probability.h"
 #include "simple_prefix.h"
 
+#define myFormatStringByMacro_ReturnFormatString(format, ...) \
+({ \
+    int size = snprintf(NULL, 0, format, ##__VA_ARGS__);\
+    size++; \
+    char *buf = (char *)malloc(size); \
+    snprintf(buf, size, format, ##__VA_ARGS__); \
+    buf; \
+});
+
 void int2filename(int i, char *filename){
 	strcpy(filename, "./rtt/");
 	int digit_num, tmp = i, j;
@@ -24,6 +33,16 @@ void int2filename(int i, char *filename){
 	char const *aaa = ".txt";
 	strcpy(filename + 6 + digit_num, aaa);
 	return;
+}
+
+char *pfx2filename(prefix *pfx){
+	char *ret = myFormatStringByMacro_ReturnFormatString("./rtt/%lu.%lu.%lu.%lu_%d_rtt.txt",
+		pfx->ip >> 24,
+		(pfx->ip >> 16) & 0xff,
+		(pfx->ip >> 8) & 0xff,
+		pfx->ip & 0xff,
+		pfx->slash);
+	return ret;
 }
 
 int main(int argc, char const *argv[])
@@ -141,10 +160,10 @@ int main(int argc, char const *argv[])
 			Bucket *bkt = search_ht(pfx_set[pfx_index].ht, tmp_f);
 			if (ph.ts.timestamp_s - start_ts.timestamp_s >= 30){
 				float frac = update_sw(&pfx_set[pfx_index], ph.ts, bin, log_fp);
-				if (frac != 0){
+				if (frac >= 0.5 * pfx_set[pfx_index].thresh_p){
 					//location
 					int x;
-					fprintf(suspect, "%u.%u\t", ph.ts.timestamp_s, ph.ts.timestamp_ms);
+					fprintf(suspect, "%u.%u\t%f\t%f\t", ph.ts.timestamp_s, ph.ts.timestamp_ms, pfx_set[pfx_index].thresh_p, frac);
 					fprintf(suspect, "%lu.%lu.%lu.%lu/%d\t", pfx_set[pfx_index].ip >> 24,
 						(pfx_set[pfx_index].ip >> 16) & 0xff,
 						(pfx_set[pfx_index].ip >> 8) & 0xff,
@@ -158,6 +177,15 @@ int main(int argc, char const *argv[])
 				}
 			}
 			if (bkt){
+				if (ph.ts.timestamp_s - start_ts.timestamp_s >= 30){
+					timestamp pkt_diff = ts_minus(ph.ts, bkt->f->last_active_time);
+					if (ts_cmp(pkt_diff, window) >= 0){
+						// int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
+						pfx_set[pfx_index].active_flow_count_window[pfx_set[pfx_index].curr_sw_pos] += 1;
+						bkt->f->last_active_time.timestamp_s = ph.ts.timestamp_s;
+						bkt->f->last_active_time.timestamp_ms = ph.ts.timestamp_ms;
+					}
+				}
 				//retransmission detection
 				int pkt_data = ntohs(ih->total_len) - ih_len - eth - tcp_hlen;
 				unsigned int current_expect_seq = ntohl(th->seq) + pkt_data;
@@ -167,10 +195,12 @@ int main(int argc, char const *argv[])
 					// printf("Time: %u.%u\n", ph.ts.timestamp_s, ph.ts.timestamp_ms);
 					if (ph.ts.timestamp_s - start_ts.timestamp_s >= 30){
 						timestamp rt_diff = ts_minus(ph.ts, bkt->f->last_rt_time);
-						if (bkt->f->retransmission == 0 && (ts_cmp(rt_diff, window) >= 0)){
-							int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
-							pfx_set[pfx_index].sliding_window[last_bin] += 1;
-							bkt->f->retransmission = 1;
+						if (ts_cmp(rt_diff, window) >= 0){
+							// int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
+							pfx_set[pfx_index].sliding_window[pfx_set[pfx_index].curr_sw_pos] += 1;
+
+							bkt->f->last_rt_time.timestamp_s = ph.ts.timestamp_s;
+							bkt->f->last_rt_time.timestamp_ms = ph.ts.timestamp_ms;
 						}
 						// if (pfx_set[pfx_index].ip == 839581696){
 						// 	printf("Dst ip: %lu.%lu.%lu.%lu Time: %u.%u\n", dst_ip >> 24,
@@ -181,11 +211,8 @@ int main(int argc, char const *argv[])
 						// 		ph.ts.timestamp_ms);
 						// }
 					}
-					bkt->f->last_rt_time.timestamp_s = ph.ts.timestamp_s;
-					bkt->f->last_rt_time.timestamp_ms = ph.ts.timestamp_ms;
 				}
 				else{
-					bkt->f->retransmission = 0;
 					if (ph.ts.timestamp_s - start_ts.timestamp_s < 30){
 					//rtt measure and threshold calculation at first
 						unsigned int rtt = flight_update(bkt->f, tmp_f->last_ts);
@@ -277,7 +304,11 @@ int main(int argc, char const *argv[])
 
 			}
 			else{
+				tmp_f->last_active_time.timestamp_s = ph.ts.timestamp_s;
+				tmp_f->last_active_time.timestamp_ms = ph.ts.timestamp_ms;
 				insert_ht(pfx_set[pfx_index].ht, tmp_f);
+				// int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
+				pfx_set[pfx_index].active_flow_count_window[pfx_set[pfx_index].curr_sw_pos] += 1;
 			}
 
 		}

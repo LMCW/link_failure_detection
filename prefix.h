@@ -8,7 +8,7 @@
 
 #define BIN_NUM 10
 #define BIN_TIME 0.08
-#define BASIC_THRESHOLD 0
+#define BASIC_THRESHOLD 10
 
 typedef struct prefix{
 	unsigned long ip;
@@ -23,7 +23,7 @@ typedef struct prefix{
 	timestamp current_bin_start_time;
 
 	//active flow count, at the same pace with retransmission sliding window
-	// int *active_flow_count_window;
+	int *active_flow_count_window;
 
 	hash_table *ht;
 

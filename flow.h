@@ -17,7 +17,8 @@ typedef struct flow{
 	unsigned int expect_seq;	
 	//retransmission detection
 
-	int retransmission;//0 or 1
+	// int is_active;
+	// int retransmission;//0 or 1
 	timestamp last_rt_time;
 	//TODO: flow active judgement
 
@@ -26,6 +27,7 @@ typedef struct flow{
 	//Rtt measurement
 
 	timestamp last_ts;
+	timestamp last_active_time;
 }flow;
 
 unsigned int flight_update(flow *f, timestamp ts);

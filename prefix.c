@@ -45,11 +45,19 @@ prefix *pfx_set_from_file(char const *filename, int set_size){
 
 			set[i].thresh_p = 0.5;
 			set[i].ht = (void *)malloc(sizeof(hash_table));
+
 			set[i].sliding_window = (int *)malloc(sizeof(int) * BIN_NUM);
 			memset(set[i].sliding_window, 0, sizeof(int) * BIN_NUM);
+
+			set[i].active_flow_count_window = (int *)malloc(sizeof(int) * BIN_NUM);
+			memset(set[i].active_flow_count_window, 0, sizeof(int) * BIN_NUM);
+
 			set[i].curr_sw_pos = 0;
 			set[i].current_bin_start_time.timestamp_s = 0;
 			set[i].current_bin_start_time.timestamp_ms = 0;
+
+			
+
 			// printf("%d\n", i);
 			hash_init(set[i].ht);
 		}
@@ -102,20 +110,64 @@ int pfx_cmp(const void *a, const void *b){
 
 float update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 	float ret = 0;
+	timestamp diff = ts_minus(packet_time, pfx->current_bin_start_time);
+	int sw_sum = 0, active_flow_sum = 0, p;
+	for (p = 0;p < BIN_NUM;++p){
+		sw_sum += pfx->sliding_window[p];
+		active_flow_sum += pfx->active_flow_count_window[p];
+	}
+
+	if (ts_cmp(diff, bin) > 0){
+		int shift = ts_divide(diff, bin);
+		int i,j;
+		for (i = pfx->curr_sw_pos, j = 0;j < shift;++j){
+			i = (i + 1) % BIN_NUM;
+			pfx->sliding_window[i] = 0;
+			pfx->active_flow_count_window[i] = 0;
+		}
+
+		if (sw_sum >= BASIC_THRESHOLD){
+			fprintf(fp, "SW_INFO|\t%lu.%lu.%lu.%lu/%d\t%u.%06u\t%d\t%d THRESHOLD: %f\n", 
+				pfx->ip >> 24,
+				(pfx->ip >> 16) & 0xff,
+				(pfx->ip >> 8) & 0xff,
+				pfx->ip & 0xff,
+				pfx->slash,
+				pfx->current_bin_start_time.timestamp_s,
+				(pfx->current_bin_start_time.timestamp_ms) % 1000000,
+				sw_sum,
+				active_flow_sum,
+				pfx->thresh_p);
+			ret = (float)sw_sum / (float)active_flow_sum;
+		}
+		pfx->curr_sw_pos = (pfx->curr_sw_pos + shift) % BIN_NUM;
+		pfx->current_bin_start_time.timestamp_s += (pfx->current_bin_start_time.timestamp_ms + shift * bin.timestamp_ms) / 1000000;
+		pfx->current_bin_start_time.timestamp_ms = (pfx->current_bin_start_time.timestamp_ms + shift * bin.timestamp_ms) % 1000000;
+	}
+
+	return ret;
+}
+
+/*
+float update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
+	float ret = 0;
 	timestamp active_threshold;
 	active_threshold.timestamp_s = 2;
 	active_threshold.timestamp_ms = 0;
 	timestamp diff = ts_minus(packet_time, pfx->current_bin_start_time);
 	int sw_sum = 0,p;
-	for (p = 0;p < BIN_NUM;++p)
+	int active_flow_sum = 0;
+	for (p = 0;p < BIN_NUM;++p){
 		sw_sum += pfx->sliding_window[p];
+		active_flow_sum += pfx->active_flow_count_window[p];
+	}
+
 	if (ts_cmp(diff, bin) > 0){
 		//have to move to the next bin
 		// printf("%u.%u\n", pfx->current_bin_start_time.timestamp_s, pfx->current_bin_start_time.timestamp_ms);
 		int shift = ts_divide(diff, bin);
 		int i, j;
 		for (i = pfx->curr_sw_pos, j = 0;j < shift;++j){
-			sw_sum -= pfx->sliding_window[i];
 			//show sw_sum
 			if (sw_sum > BASIC_THRESHOLD){
 				//calculate active flow count
@@ -181,3 +233,4 @@ float update_sw(prefix *pfx, timestamp packet_time, timestamp bin, FILE *fp){
 	
 	return ret;
 }
+*/

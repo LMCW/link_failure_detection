@@ -46,9 +46,14 @@ void tmp_flow(flow *f, pcap_header ph, ip_header *ih, tcp_header *th, int eth){
 	f->dst_port = th->dst_port;
 	f->expect_seq = ntohl(th->seq) + ntohs(ih->total_len) - ih_len - eth - tcp_hlen;
 	f->flight_size = 0;
-	f->retransmission = 0;
+	// f->retransmission = 0;
+	// f->is_active = 1;
 	f->last_rt_time.timestamp_s = 0;
 	f->last_rt_time.timestamp_ms = 0;
+
+	f->last_active_time.timestamp_s = 0;
+	f->last_active_time.timestamp_ms = 0;
+	
 	f->last_ts.timestamp_s = ph.ts.timestamp_s;
 	f->last_ts.timestamp_ms = ph.ts.timestamp_ms;
 	iat_queue_init(&(f->iq));
