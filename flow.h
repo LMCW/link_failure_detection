@@ -6,7 +6,7 @@
 #include "stdlib.h"
 #include <arpa/inet.h>
 
-#define FLIGHT_THRESHOLD 1000//10millisecond
+#define FLIGHT_THRESHOLD 10000//10millisecond
 #define G_THRESHOLD 10
 
 typedef struct flow{

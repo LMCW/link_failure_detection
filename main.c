@@ -8,6 +8,7 @@
 #include "stdlib.h"
 #include "probability.h"
 #include "simple_prefix.h"
+#include "analyze.h"
 
 #define myFormatStringByMacro_ReturnFormatString(format, ...) \
 ({ \
@@ -17,6 +18,8 @@
     snprintf(buf, size, format, ##__VA_ARGS__); \
     buf; \
 });
+
+#define RTT_MEASURE_TIME 0
 
 void int2filename(int i, char *filename){
 	strcpy(filename, "./rtt/");
@@ -51,6 +54,8 @@ int main(int argc, char const *argv[])
 		printf("Usage: pcaptest [as_rel] [rib] [prefix] [pcap]\n");
 		return 1;
 	}
+	link_statistic(argv[3], argv[1], argv[2], argv[4]);
+	return 0;
 
 	//generate prefix file from pcap file
 	pcap_to_raw_set(argv[4], argv[1], argv[2], argv[3]);
@@ -81,6 +86,13 @@ int main(int argc, char const *argv[])
 	memcpy(suspect_file_name + 23, argv[4] + 44, 11);
 	FILE *suspect = fopen(suspect_file_name,"w");
 
+	char rt_file_name[100];
+	memset(rt_file_name, 0, 100);
+	char const *rt_f = "./retransmission/2013/rt_";//25
+	strcpy(rt_file_name, rt_f);
+	memcpy(rt_file_name + 25, argv[4] + 44, 11);
+	FILE *frt = fopen(rt_file_name,"w");
+
 	//pcap analyze
 	int count, eth, flag = 0;
 	int readSize = 0;
@@ -107,8 +119,8 @@ int main(int argc, char const *argv[])
 	pcap_header ph;
 
 	fread(&pfh, sizeof(pcap_file_header), 1, fp);
-	prinfPcapFileHeader(&pfh);
-
+	// prinfPcapFileHeader(&pfh);
+	printf("Start Analyze %s\n", argv[4]);
 	for (count = 1;;++count){
 		//read pcap header
 		readSize = fread(&ph, sizeof(pcap_header), 1, fp);
@@ -158,12 +170,12 @@ int main(int argc, char const *argv[])
 			flow *tmp_f = (flow *)malloc(sizeof(flow));
 			tmp_flow(tmp_f, ph, ih, th, eth);
 			Bucket *bkt = search_ht(pfx_set[pfx_index].ht, tmp_f);
-			if (ph.ts.timestamp_s - start_ts.timestamp_s >= 30){
+			if (ph.ts.timestamp_s - start_ts.timestamp_s >= RTT_MEASURE_TIME){
 				float frac = update_sw(&pfx_set[pfx_index], ph.ts, bin, log_fp);
 				if (frac >= 0.5 * pfx_set[pfx_index].thresh_p){
 					//location
 					int x;
-					fprintf(suspect, "%u.%u\t%f\t%f\t", ph.ts.timestamp_s, ph.ts.timestamp_ms, pfx_set[pfx_index].thresh_p, frac);
+					fprintf(suspect, "%u.%06u\t%f\t%f\t", ph.ts.timestamp_s, ph.ts.timestamp_ms, pfx_set[pfx_index].thresh_p, frac);
 					fprintf(suspect, "%lu.%lu.%lu.%lu/%d\t", pfx_set[pfx_index].ip >> 24,
 						(pfx_set[pfx_index].ip >> 16) & 0xff,
 						(pfx_set[pfx_index].ip >> 8) & 0xff,
@@ -177,7 +189,7 @@ int main(int argc, char const *argv[])
 				}
 			}
 			if (bkt){
-				if (ph.ts.timestamp_s - start_ts.timestamp_s >= 30){
+				if (ph.ts.timestamp_s - start_ts.timestamp_s >= RTT_MEASURE_TIME){
 					timestamp pkt_diff = ts_minus(ph.ts, bkt->f->last_active_time);
 					if (ts_cmp(pkt_diff, window) >= 0){
 						// int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
@@ -193,14 +205,30 @@ int main(int argc, char const *argv[])
 					current_expect_seq >= ntohl(th->seq) &&
 					pkt_data > 0){//retransimission
 					// printf("Time: %u.%u\n", ph.ts.timestamp_s, ph.ts.timestamp_ms);
-					if (ph.ts.timestamp_s - start_ts.timestamp_s >= 30){
+					int keep_alive = 0;
+					if ((pkt_data == 0 || pkt_data == 1) && (current_expect_seq == ntohl(th->seq) + 1)){
+						keep_alive = 1;
+					}
+					if (ph.ts.timestamp_s - start_ts.timestamp_s >= RTT_MEASURE_TIME){
 						timestamp rt_diff = ts_minus(ph.ts, bkt->f->last_rt_time);
-						if (ts_cmp(rt_diff, window) >= 0){
+						if (ts_cmp(rt_diff, window) >= 0 && keep_alive == 0){
 							// int last_bin = (pfx_set[pfx_index].curr_sw_pos - 1) % BIN_NUM;
 							pfx_set[pfx_index].sliding_window[pfx_set[pfx_index].curr_sw_pos] += 1;
 
 							bkt->f->last_rt_time.timestamp_s = ph.ts.timestamp_s;
 							bkt->f->last_rt_time.timestamp_ms = ph.ts.timestamp_ms;
+							// if (pfx_set[pfx_index].ip == 1218304000){
+							fprintf(frt,"Time: %u.%06u\t", ph.ts.timestamp_s, ph.ts.timestamp_ms);
+							fprintf(frt,"Src_ip :%u.%u.%u.%u\t", ntohl(ih->src_ip) >> 24,
+								(ntohl(ih->src_ip) >> 16) & 0xff,
+								(ntohl(ih->src_ip) >> 8) & 0xff,
+								ntohl(ih->src_ip) & 0xff);
+							fprintf(frt,"Dst_ip :%lu.%lu.%lu.%lu\n", dst_ip >> 24,
+								(dst_ip >> 16) & 0xff,
+								(dst_ip >> 8) & 0xff,
+								dst_ip & 0xff);
+								// printf("%d %d %d\n", ph.len, ntohs(ih->total_len), pkt_data);
+							// }
 						}
 						// if (pfx_set[pfx_index].ip == 839581696){
 						// 	printf("Dst ip: %lu.%lu.%lu.%lu Time: %u.%u\n", dst_ip >> 24,
@@ -213,39 +241,47 @@ int main(int argc, char const *argv[])
 					}
 				}
 				else{
-					if (ph.ts.timestamp_s - start_ts.timestamp_s < 30){
+					if (ph.ts.timestamp_s - start_ts.timestamp_s < RTT_MEASURE_TIME){
 					//rtt measure and threshold calculation at first
 						unsigned int rtt = flight_update(bkt->f, tmp_f->last_ts);
 						if (rtt){
-							fprintf(frtt,"%d\t", pfx_index);
-							fprintf(frtt,"Src %u.%u.%u.%u\t", bkt->f->src_ip >> 24,
-								(bkt->f->src_ip >> 16) & 0xff,
-								(bkt->f->src_ip >> 8) & 0xff,
-								bkt->f->src_ip & 0xff);
-							fprintf(frtt,"Dst %u.%u.%u.%u\t", bkt->f->dst_ip >> 24,
-								(bkt->f->dst_ip >> 16) & 0xff,
-								(bkt->f->dst_ip >> 8) & 0xff,
-								bkt->f->dst_ip & 0xff);
-							fprintf(frtt,"Src port: %u\t", bkt->f->src_port);
-							fprintf(frtt,"Dst port: %u\t", bkt->f->dst_port);
-							fprintf(frtt,"Rtt sample: %d\n", rtt);
+							// fprintf(frtt,"%d\t", pfx_index);
+							// fprintf(frtt,"Src %u.%u.%u.%u\t", bkt->f->src_ip >> 24,
+							// 	(bkt->f->src_ip >> 16) & 0xff,
+							// 	(bkt->f->src_ip >> 8) & 0xff,
+							// 	bkt->f->src_ip & 0xff);
+							// fprintf(frtt,"Dst %u.%u.%u.%u\t", bkt->f->dst_ip >> 24,
+							// 	(bkt->f->dst_ip >> 16) & 0xff,
+							// 	(bkt->f->dst_ip >> 8) & 0xff,
+							// 	bkt->f->dst_ip & 0xff);
+							// fprintf(frtt,"Src port: %u\t", bkt->f->src_port);
+							// fprintf(frtt,"Dst port: %u\t", bkt->f->dst_port);
+							// fprintf(frtt,"Rtt sample: %d\n", rtt);
+
+							//simplified output:
+							fprintf(frtt, "%lu.%lu.%lu.%lu_%d\t", pfx_set[pfx_index].ip >> 24,
+								(pfx_set[pfx_index].ip >> 16) & 0xff,
+								(pfx_set[pfx_index].ip >> 8) & 0xff,
+								pfx_set[pfx_index].ip & 0xff,
+								pfx_set[pfx_index].slash);
+							fprintf(frtt, "%d\n", rtt);
 						}
 					}
 					else{
 						if (flag == 0){
-							printf("Rtt measurement complete.\n");
+							// printf("Rtt measurement complete.\n");
 							if (frtt){
 								fclose(frtt);
 							}
-							system("python ./flow_stats.py");
-				
+							// system("python ./flow_stats.py");
 							flag = 1;
-							printf("Calculating Thresholds.\n");
+							// printf("Calculating Thresholds.\n");
 							int j = 0, p, q;
-							char *fn = (char *)malloc(20);
+							// char *fn = (char *)malloc(100);
 							for (;j < set_size;++j){
-								memset(fn, 0, 20);
-								int2filename(j, fn);
+								// memset(fn, 0, 100);
+								// int2filename(j, fn);
+								char *fn = pfx2filename(&(pfx_set[j]));
 								int line_num = file_line_num(fn);
 								if (line_num == 0){
 									continue;
@@ -280,7 +316,7 @@ int main(int argc, char const *argv[])
 								}
 								// printf("Pfx: %d, probability: %f\n", j, max_peak);
 							}
-							printf("End Calculating Thresholds.\n");
+							// printf("End Calculating Thresholds.\n");
 
 						}
 						//
@@ -324,6 +360,12 @@ int main(int argc, char const *argv[])
 		fclose(log_fp);
 	if (suspect)
 		fclose(suspect);
+	if (frtt){
+		fclose(frtt);
+	}
+	if (frt){
+		fclose(frt);
+	}
 
 	
 	//location

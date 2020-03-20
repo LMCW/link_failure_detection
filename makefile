@@ -10,7 +10,8 @@ SRCS = main.c \
 	iat.c \
 	timestamp.c \
 	probability.c \
-	simple_prefix.c
+	simple_prefix.c \
+	analyze.c
 	
 OBJS = $(SRCS:.c=.o) 
 

@@ -1,4 +1,5 @@
 # Prerequisites
+updates/
 *.sh
 as-rel/
 log/
@@ -8,6 +9,8 @@ rtt/
 suspect/
 trace_caida/
 trace_simulation/
+retransmission/
+updates/
 .DS_Store
 *.pcap
 *.txt

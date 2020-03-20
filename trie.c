@@ -65,7 +65,7 @@ as_rel *load_asr(char const *filename){
 	asr->count = i;
 
 	fclose(fd);
-	printf("Finish loading AS relation list!\n");
+	// printf("Finish loading AS relation list!\n");
 	// printf("The first line is %d|%d|%hd\n", asr->a[0], asr->b[0], asr->rel[0]);
 
 	return asr;
@@ -130,11 +130,14 @@ void trie_insert(trie_node *root, char* key, as_path *path, as_rel *asr){
 		node = node->children[*p-'0'];
 		++p;
 	}
-	node->isKey = 1;
-	strcpy(node->pfx_key, key);
-	if (path_cmp(node->path, *path, 12085, 1,asr) > 0){
+	if (node->isKey == 0){
+		node->isKey = 1;
+		strcpy(node->pfx_key, key);
 		node->path.nodes = path->nodes;
 	}
+	// if (path_cmp(node->path, *path, 12085, 1,asr) > 0){
+	// 	node->path.nodes = path->nodes;
+	// }
 	// printf("Insert Succeed! %s.\n", key);
 }
 
@@ -322,7 +325,7 @@ trie_node* load_rib(char const *as_rel_file, char const *rib_file){
 	}
 
 	fclose(fd);
-	printf("Initialization finished!\n");
+	// printf("Initialization finished!\n");
 
 	return root;
 }

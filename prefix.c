@@ -13,7 +13,7 @@ int pfx_file_size(char const *filename){
 			break;
 		}
 	}
-	printf("Prefix file size: %d.\n", i);
+	// printf("Prefix file size: %d.\n", i);
 	free(buff);
 	fclose(fp);
 	return i;
@@ -62,7 +62,7 @@ prefix *pfx_set_from_file(char const *filename, int set_size){
 			hash_init(set[i].ht);
 		}
 	}
-	printf("Load Complete.\n");
+	// printf("Load Complete.\n");
 	qsort(set, set_size, sizeof(prefix), pfx_cmp);
 	fclose(fp);
 	free(buff);

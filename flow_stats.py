@@ -21,7 +21,7 @@ def flow_distribution():
 	plt.show()
 
 # flow_distribution()
-
+"""
 def rtt_distribution(fn):
 	fd = open(fn, 'r')
 	contents = fd.readlines()
@@ -36,7 +36,32 @@ def rtt_distribution(fn):
 			res[pfx] = [rtt_sample]
 	fd.close()
 	return res
+"""
 
+def rtt_distribution(fn):
+	fd = open(fn, 'r')
+	res = {}
+	contents = fd.readlines()
+	for line in contents:
+		arr = line.strip('\n').split('\t')
+		pfx = arr[0]
+		rtt_sample = int(arr[1])
+		if pfx in res:
+			res[pfx].append(rtt_sample)
+		else:
+			res[pfx] = [rtt_sample]
+	fd.close()
+	return res
+
+def generate_data(fn):
+	dic = rtt_distribution(fn)
+	for key in dic:
+		# tmp_arr = []
+		fk = open('./rtt/'+key+'_rtt.txt','w')
+		for i in dic[key]:
+			fk.write(str(i / 1000.0) + '\n')
+		fk.close()
+"""
 def generate_data(fn):
 	dic = rtt_distribution(fn)
 	for key in dic:
@@ -55,6 +80,7 @@ def generate_data(fn):
 		# plt.savefig('./rtt/'+str(key)+'.png')
 		# plt.clf()
 		fk.close()
+"""
 
 def raw_to_cdf(fn):
 	if "txt" not in fn:
